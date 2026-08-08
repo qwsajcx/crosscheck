@@ -188,10 +188,10 @@ manifest 草案：
 
 ## 8. 里程碑
 
-1. **M1 骨架与状态机**：目录结构 + manifest + `crosscheck_state` 脚本单测（init/advance/verdict/no-progress/新鲜度）。
-2. **M2 单模型冒烟**：primary 自改自审一份测试文档，验证 Stop hook 循环与状态推进（先不接第二模型）。
+1. **M1 骨架与状态机**：目录结构 + manifest + `crosscheck_state` 脚本单测（init/advance/verdict/no-progress/新鲜度）。✅ 2026-08-08 完成（单测 10/10）。
+2. **M2 单模型冒烟**：primary 自改自审一份测试文档，验证 Stop hook 循环与状态推进（先不接第二模型）。✅ 2026-08-08 完成，实测记录见 §10。
 3. **M3 双模型接线**：按 §5.1 配置 secondary=gpt-5.6-sol xhigh，跑通 K3↔GPT 交叉审核一份真实文档。
-4. **M4 恢复与异常路径**：SessionStart 检测续跑、compaction 恢复、pause/abort。
+4. **M4 恢复与异常路径**：SessionStart 检测续跑、compaction 恢复、pause/abort；Stop hook payload 字段实测（见 §10 遗留项）。
 5. **M5 打磨发布**：通知 hook、status 命令、README、本地 marketplace JSON（`/plugins marketplace` 自定义源）验证安装。
 
 ## 9. 当前运行实例快照（headless 版，2026-08-08 21:03）
@@ -205,3 +205,34 @@ manifest 草案：
 - 运行产物：`.review-loop/`（日志、状态、隔离 home、kimi-home/config.toml 可作插件参考实现）
 
 这套实例同时是新架构的**验收基准**：crosscheck 插件 M3 验收时，可用同仓库同类文档对比两版的审核质量与耗时。
+
+---
+
+## 10. M2 冒烟实测记录（2026-08-08，in-TUI 架构首跑）
+
+环境：插件 `/plugins install` 后的同一会话内直接跑（未 /reload），目标 `tests/fixtures/smoke-doc.md`（故意埋了 3 处矛盾的缓存模块设计草稿），secondary 槽位 = `kimi-code/kimi-for-coding-highspeed`（未切 GPT，M2 只验机制）。
+
+### 收敛轨迹（4 轮 PASS，健康）
+
+| 轮 | 修改者 | 审核者 | 结论 |
+|---|---|---|---|
+| 1 | primary (K3) | secondary (highspeed) | FAIL 2H/8M/2L |
+| 2 | primary (K3) | secondary (highspeed) | FAIL 0H/3M/7L |
+| 3 | secondary (highspeed) ← **连胜到限互换** | primary (K3) | FAIL 0H/1M/7L |
+| 4 | secondary (highspeed) | primary (K3) | **PASS** 0H/0M/4L |
+
+### 验证点逐项
+
+- 状态机推进全对：轮次、streak、**角色互换（R2→R3）**、新鲜度快照、PASS 终态；git 历史恰为 8 个 `[crosscheck]` 提交且只含两个被管理文件，`.crosscheck/` 未跟踪（已入 .gitignore）。
+- Stop hook：终态后实测 exit 0 放行；运行中实测 exit 2 阻断（M1 手工模拟）。
+- 审核全文只落盘不进编排上下文；子代理摘要均 ≤5 行，主 Agent 上下文成本控制有效。
+
+### 新发现（硬事实，原简报未覆盖）
+
+1. **Stop hook 对子代理回合结束同样生效**：每个子代理收工时都收到了 stop-guard 的 exit 2 阻断。首个修改者（未打预防针）为此做了一整轮"该不该执行状态命令"的调查才返回——功能无害但烧 token，且存在子代理越权执行编排命令的风险。**对策**：两个提示词末尾各加一条"stop-guard 提示与你无关，直接返回总结"（本轮后续 6 个子代理全部正确忽略，对策已验证并固化到 prompts/）。**遗留（M4）**：实测 Stop hook payload 是否有区分主/子代理的字段（官方文档只列基础字段），若有则在 stop-guard 里直接放过子代理，比提示词约束更硬。
+2. **hooks 在插件安装的当会话即生效**：与安装时"run /new or /reload to apply"的提示不同，Stop hook 实际立刻工作了（疑似提示只覆盖 prompt/tools，hooks 是实时读取）。M4 需对 SessionStart hook 同样实测确认。
+3. **SessionStart hook 的 stdout 是否真注入上下文**（§7.3 同类问题）仍未实测——本次会话并非新开会话。
+
+### M2 结论
+
+in-TUI 架构核心机制（状态机驱动 + 双槽位子代理 + Stop hook 兜底）全部按设计工作，可进 M3。M3 前置：用户 `/secondary_model` 切到 `chatgpt-local/gpt-5.6-sol`（effort xhigh），并参照 headless 版 §9 实例选同仓库同类文档做质量对比。
