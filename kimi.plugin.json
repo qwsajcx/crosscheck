@@ -1,0 +1,15 @@
+{
+  "name": "crosscheck",
+  "version": "0.1.0",
+  "description": "TUI 内双模型文档交叉审核循环：修改者与审核者子代理交替工作直到 [PASS]，Stop hook 保证未达终态不收工",
+  "skills": "./skills/",
+  "commands": "./commands/",
+  "hooks": [
+    { "event": "Stop", "command": "node ./hooks/stop-guard.mjs", "timeout": 10 },
+    { "event": "SessionStart", "command": "node ./hooks/session-start.mjs", "timeout": 10 }
+  ],
+  "interface": {
+    "displayName": "Crosscheck",
+    "shortDescription": "双模型文档交叉审核循环（TUI 内可见可干预）"
+  }
+}
