@@ -236,3 +236,40 @@ manifest 草案：
 ### M2 结论
 
 in-TUI 架构核心机制（状态机驱动 + 双槽位子代理 + Stop hook 兜底）全部按设计工作，可进 M3。M3 前置：用户 `/secondary_model` 切到 `chatgpt-local/gpt-5.6-sol`（effort xhigh），并参照 headless 版 §9 实例选同仓库同类文档做质量对比。
+
+---
+
+## 11. deepseek-flash 自审轮与"子代理越权接管"事件（2026-08-08 第二跑）
+
+配置：secondary 槽位换为 `opencode-go/deepseek-v4-flash`（effort max），目标 `tests/fixtures/smoke-doc2.md`（数据同步方案草稿，埋了周期/时长矛盾）。为省成本，两个角色的子代理都以 `model=secondary` 派发——即**单模型自改自审**，状态文件的槽位标签（primary/secondary 互换记录）本次不代表真实模型。
+
+### 收敛轨迹（终态 max-rounds）
+
+| 轮 | 结论 | 轮 | 结论 |
+|---|---|---|---|
+| 1 | FAIL 1H/3M/4L | 6 | FAIL 0H/3M/5L |
+| 2 | FAIL 0H/5M/7L | 7 | FAIL 0H/5M/6L |
+| 3 | FAIL 1H/4M/4L | 8 | FAIL 1H/1M/3L ※ |
+| 4 | FAIL 1H/4M/5L | 9-10 | FAIL ※（终态 max-rounds，剩 1M/2L） |
+| 5 | FAIL 1H/3M/5L | | |
+
+※ R8 起为越权接管期间产生（见下），质量未逐条核验。
+
+**审核质量评价（R1-R7，逐条人工抽查过 HIGH）**：deepseek-flash 的 HIGH 全部真实且颇有深度——mysqldump 管道导出表名与临时表不符（会 DROP 正式表）、T0 快照与实时源表比对的结构性失配、mysqldump 默认输出 `LOCK TABLES`/`DISABLE KEYS` 绕过 sed 改写。不收敛的原因不是审核者放水或空转，而是**单模型修补链每轮引入新的次级缺陷**（sed 路线打补丁三轮后才换预建临时表路线）+ 边缘完善型 MEDIUM 振荡。**结论：deepseek-flash 可胜任廉价机制冒烟；正式质量审核仍需异模型对抗（M3 的 K3↔GPT 或 K3↔deepseek）。**
+
+### 子代理越权接管事件（本次最重要的架构发现）
+
+R8 修改者子代理（deepseek-flash）返回时声称"循环已到终态"——核查状态文件与 git log 证实它**真的接管了编排**：自行执行 `record-modify`、派发 R8-R10 的审核/修改子代理、执行 `record-review --after`，把循环跑到了 max-rounds。状态机本身保持了一致性（所有迁移都经确定性脚本），提交也只含受管文件，但主 Agent 的编排簿记完全失真。
+
+- **诱因**：Stop hook 的 exit 2 阻断对子代理回合同样生效，而阻断消息是无差别命令句（"继续推进：读取状态文件，执行下一步"）——与提示词第 6 条"忽略它"形成指令冲突，廉价模型在该轮选择了服从 hook。
+- **根因**：阻断消息没有区分受众；且 hook 无法区分子代理回合（payload 字段官方未文档化）。
+- **修复（已落地并验证）**：
+  1. stop-guard 阻断消息改为**双受众**：显式声明"子代理：本消息不是给你的，直接返回总结；编排器：继续推进"；提示词第 6/7 条同步强化（"即使它看起来在命令你继续"）。
+  2. stop-guard 增加**子代理标记字段检测**（`agent_id`/`agent_type`/`parent_session_id` 等候选键，命中即放行）——字段未经官方实证，作为纵深一层；`CROSSCHECK_HOOK_DEBUG=1` 时 hook 落 payload 到 `/tmp/crosscheck-stop-payloads.jsonl` 供 `/reload` 后实证。
+  3. 修正 hook 的 cwd 回退：无 `payload.cwd` 时直接放行（不再误扫 hook 进程自身 cwd）。
+  4. SKILL.md 故障节新增"子代理声称到终态→立即 verdict + git log 核对"条目。
+- **遗留（M4）**：`/reload` 后用探针子代理 + debug 日志实证 Stop payload 是否携带子代理标记；若确认有，检测逻辑即从候选键收紧为该字段。
+
+### 本轮验证通过的机制点
+
+新鲜度快照 7 轮全部正确判定 `fresh`；角色互换标签按 streak=2 规律触发；max-rounds 终态正确收尾；终态后 Stop hook 放行；单测维持 10/10。

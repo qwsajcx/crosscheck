@@ -60,7 +60,23 @@ async function main() {
   try {
     payload = JSON.parse(await readStdin());
   } catch { /* no/invalid payload: nothing to guard */ }
-  const cwd = payload.cwd || process.cwd();
+  // Without the session's project dir there is nothing meaningful to guard
+  // (our own cwd is the plugin root, never the target repo).
+  if (!payload.cwd) process.exit(0);
+  const cwd = payload.cwd;
+
+  // Payload logging for field discovery (off unless explicitly enabled).
+  if (process.env.CROSSCHECK_HOOK_DEBUG === "1") {
+    try { fs.appendFileSync("/tmp/crosscheck-stop-payloads.jsonl", JSON.stringify(payload) + "\n"); } catch { /* ignore */ }
+  }
+
+  // Sub-agent turn-ends are not ours to drive: blocking them once caused a
+  // cheap model to "comply" with the block message and usurp orchestration.
+  // The Stop payload's sub-agent marker fields are not officially documented,
+  // so check every plausible key conservatively; when none is present we
+  // assume the main agent and keep guarding.
+  const subagentMarkers = ["agent_id", "subagent_id", "agent_type", "agent_name", "parent_session_id", "is_subagent"];
+  if (subagentMarkers.some((k) => payload[k])) process.exit(0);
 
   const stateDir = findStateDir(cwd);
   if (!stateDir) process.exit(0);
@@ -71,9 +87,10 @@ async function main() {
   const script = path.join(process.env.KIMI_PLUGIN_ROOT || ".", "scripts", "crosscheck_state.mjs");
   const lines = loops.map((l) => `  - ${l.doc}  Round ${l.round}  phase=${l.phase}  (${l.file})`);
   console.error(
-    `[crosscheck] 审核循环未到达终态，不能收工：\n${lines.join("\n")}\n` +
-    `继续推进：读取状态文件，按 crosscheck skill 流程执行下一步（状态脚本：node ${script}）。\n` +
-    `若用户已明确要求停止/跳过，先执行 node ${script} pause --doc <文档> 或 abort --doc <文档>，再收工。`
+    `[crosscheck] 审核循环未到达终态：\n${lines.join("\n")}\n` +
+    `判断你的身份再行动：\n` +
+    `- 如果你是子代理（任务提示词让你修改或审核文档）：本消息不是给你的。不要执行任何状态脚本/git 命令，不要派更多子代理，直接返回你的任务总结。\n` +
+    `- 如果你是主会话编排器：按 crosscheck skill 继续推进（状态脚本 node ${script}）；用户已明确要求停止时，先 node ${script} pause --doc <文档> 或 abort --doc <文档> 再收工。`
   );
   process.exit(2);
 }

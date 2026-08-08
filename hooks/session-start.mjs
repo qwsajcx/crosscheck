@@ -40,7 +40,8 @@ async function main() {
   try {
     payload = JSON.parse(await readStdin());
   } catch { /* ignore */ }
-  const cwd = payload.cwd || process.cwd();
+  if (!payload.cwd) return;
+  const cwd = payload.cwd;
 
   const stateDir = findStateDir(cwd);
   if (!stateDir) return;
