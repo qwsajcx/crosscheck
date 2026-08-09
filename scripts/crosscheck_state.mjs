@@ -13,6 +13,7 @@
  *   init           --doc <path> [--repo <path>] [--review-file <path>]
  *                    [--max-rounds N] [--streak-limit N]
  *                    [--modifier-slot primary|secondary] [--force]
+ *                    [--label-primary "K3"] [--label-secondary "gpt-5.6-sol"]
  *   status         --doc <path> | --repo <path>
  *   record-modify  --doc <path>
  *   record-review  --doc <path> (--before | --after)
@@ -141,6 +142,11 @@ function otherSlot(slot) {
   return slot === "primary" ? "secondary" : "primary";
 }
 
+/** Human-readable model name for a slot, e.g. "K3" instead of "primary". */
+function labelOf(st, slot) {
+  return (st.labels && st.labels[slot]) || slot;
+}
+
 /** Resolve --doc against cwd, find repo, return {repo, relDoc, absDoc}. */
 function resolveDoc(args) {
   if (!args.doc) fail("missing --doc <path>");
@@ -196,6 +202,11 @@ function cmdInit(args) {
   if (!["primary", "secondary"].includes(modifierSlot)) {
     fail(`--modifier-slot must be primary|secondary, got ${modifierSlot}`);
   }
+  // Optional human-readable model names per slot (confirmed with the user at
+  // loop start); used in commit messages and status output.
+  const labels = {};
+  if (args["label-primary"]) labels.primary = args["label-primary"];
+  if (args["label-secondary"]) labels.secondary = args["label-secondary"];
   const st = {
     version: 1,
     doc: relDoc,
@@ -205,6 +216,7 @@ function cmdInit(args) {
     round: 1,
     phase: "modify", // modify | review | done
     modifier_slot: modifierSlot,
+    labels,
     streak: 0,
     zero_diff_streak: 0,
     max_rounds: parseInt(args["max-rounds"] || "10", 10),
@@ -241,7 +253,7 @@ function cmdRecordModify(args) {
   if (st.phase !== "modify") fail(`expected phase=modify, got ${st.phase} (doc ${relDoc})`);
 
   if (isDirty(repo, relDoc)) {
-    commitFile(repo, relDoc, `[crosscheck] 修订 (${st.modifier_slot}) - Round ${st.round}`);
+    commitFile(repo, relDoc, `[crosscheck] 修订 (${labelOf(st, st.modifier_slot)}) - Round ${st.round}`);
     st.zero_diff_streak = 0;
     st.phase = "review";
     saveState(file, st);
@@ -293,7 +305,7 @@ function cmdRecordReview(args) {
   const reviewerSlot = otherSlot(st.modifier_slot);
 
   if (isDirty(repo, st.review_file)) {
-    commitFile(repo, st.review_file, `[crosscheck] 审核 (${reviewerSlot}) - Round ${st.round}`);
+    commitFile(repo, st.review_file, `[crosscheck] 审核 (${labelOf(st, reviewerSlot)}) - Round ${st.round}`);
   }
   st.verdicts.push({
     round: st.round,
@@ -340,6 +352,8 @@ function cmdVerdict(args) {
     round: st.round,
     phase: st.phase,
     modifier_slot: st.modifier_slot,
+    modifier: labelOf(st, st.modifier_slot),
+    labels: st.labels || {},
     last_verdict: st.verdicts.length ? st.verdicts[st.verdicts.length - 1] : null,
   });
   if (args.repo && !args.doc) {

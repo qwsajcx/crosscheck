@@ -20,7 +20,13 @@ description: TUI 内双模型文档交叉审核循环。修改者子代理改文
 
 1. **目标文档在 git 仓库内**（`git rev-parse --show-toplevel` 能出根目录）。不在则报错停下。
 2. **权限模式**：循环期间需要 `yolo` 或 `auto`，否则每步都要用户确认。若不是，提示用户 `/permission-mode` 切换。
-3. **模型槽位检查**：读 `~/.kimi-code/config.toml` 的 `[secondary_model]` 节，告知用户当前 secondary 槽位绑定的模型与 effort。双模型交叉审核的价值在于两个不同模型；若 secondary 与 primary 是同一模型，明确提示并建议用户用 `/secondary_model` 切换（推荐 `chatgpt-local/gpt-5.6-sol`，effort `xhigh`）。用户确认后才继续——**插件不能也不应替用户改全局配置**。
+3. **与用户确认 A/B 角色各用哪个模型（必须问，不要自作主张）**：
+   - 先读 `~/.kimi-code/config.toml` 的 `[secondary_model]` 节，拿到两个槽位的真实绑定：primary = 当前会话模型，secondary = 配置里的模型。
+   - 然后用 AskUserQuestion 向用户确认本次循环的角色分配，一次问清两件事：
+     - **A/B 用哪两个模型**：展示当前两个槽位的绑定供确认；若用户想用别的模型，指引其先用 `/secondary_model`（或 `/model` 切会话模型）改绑定，再继续——**插件不能也不应替用户改全局配置**。
+     - **谁先改谁先审**：默认 A=primary 先修改、B=secondary 先审核；用户可选反向（init 用 `--modifier-slot secondary`）。同一模型同时扮演 A 和 B 时明确警告"单模型自审收敛质量差"（实测见简报 §11），用户坚持才继续。
+   - 把用户确认的两个模型名通过 `--label-primary` / `--label-secondary` 写进状态文件（提交信息与 status 输出都会用真实模型名）。
+   - 例外：当前是 auto 权限模式（不能提问）时，按当前绑定继续，并在第一条进展消息里显式声明实际使用的 A/B 模型与角色方向。
 4. **工作区脏文件**：`git status --porcelain` 有无关改动时提醒一句：循环提交只含被管理的两个文件，其余原样保留。
 5. **未完成循环检测**：`node state.mjs verdict --repo <仓库根>`，若已有 running/paused 的同名文档循环，问用户续跑（resume）还是重置（init --force），不要默默覆盖。
 
@@ -29,7 +35,9 @@ description: TUI 内双模型文档交叉审核循环。修改者子代理改文
 对每个目标文档执行：
 
 ```bash
-node state.mjs init --doc <文档路径> [--max-rounds 10] [--streak-limit 2] [--modifier-slot primary]
+node state.mjs init --doc <文档路径> [--max-rounds 10] [--streak-limit 2] \
+  [--modifier-slot primary] \
+  --label-primary "<用户确认的 primary 模型名>" --label-secondary "<用户确认的 secondary 模型名>"
 ```
 
 脚本返回单行 JSON，`state_file` 字段是状态文件路径。**记住每个文档的状态文件路径**（也写进你的进展汇报，方便压缩后恢复）。
@@ -41,7 +49,7 @@ node state.mjs init --doc <文档路径> [--max-rounds 10] [--streak-limit 2] [-
 每步前先 `node state.mjs status --doc <文档>` 读状态，按 `status`/`phase`/`modifier_slot` 行动：
 
 **phase=modify**：
-1. 渲染修改者提示词：读 `prompts/modifier.md`，替换 `{doc}`（绝对路径）、`{review_file}`（绝对路径）、`{round}`、`{repo}`（仓库根绝对路径）、`{model}`（槽位标签，如 `primary 槽位`）。
+1. 渲染修改者提示词：读 `prompts/modifier.md`，替换 `{doc}`（绝对路径）、`{review_file}`（绝对路径）、`{round}`、`{repo}`（仓库根绝对路径）、`{model}`（状态文件里该槽位的 label，如 `K3`；无 label 则用槽位名）。
 2. 派子代理：`Agent(prompt=渲染结果, description="Round N 修改", model=<modifier_slot>)`。
 3. 子代理返回后：`node state.mjs record-modify --doc <文档>`，按返回 JSON 的 `next` 字段走：
    - `review` → 进入审核阶段

@@ -273,3 +273,7 @@ R8 修改者子代理（deepseek-flash）返回时声称"循环已到终态"—�
 ### 本轮验证通过的机制点
 
 新鲜度快照 7 轮全部正确判定 `fresh`；角色互换标签按 streak=2 规律触发；max-rounds 终态正确收尾；终态后 Stop hook 放行；单测维持 10/10。
+
+### §11 追记（2026-08-08）：启动时确认 A/B 模型
+
+用户反馈偏差修正：原设计只"告知"槽位绑定，现改为**启动时显式询问**。SKILL.md 前置清单第 3 项改为用 AskUserQuestion 与用户确认两件事——A/B 各用哪个模型（展示当前 primary/secondary 真实绑定，想换则先 `/secondary_model` 或 `/model`）、谁先修改谁先审（`--modifier-slot` 控制）；auto 模式下不提问、按当前绑定继续并显式声明。确认结果经 `init --label-primary/--label-secondary` 落进状态文件，提交信息与 verdict/status 输出使用真实模型名（修复了 deepseek 轮"槽位标签≠真实模型"的簿记失真）。状态机向后兼容：无 labels 的旧状态文件回退显示槽位名。单测 11/11。

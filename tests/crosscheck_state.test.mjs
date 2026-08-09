@@ -246,3 +246,24 @@ test("verdict and status commands summarize state", (t) => {
   assert.equal(s.loops.length, 1);
   assert.equal(s.loops[0].status, "pass");
 });
+
+test("init stores model labels and commit messages use them", (t) => {
+  const { run, touchDoc, writeReview, git, repo } = makeRepo(t);
+  const st = run("init", "--doc", "docs/A.md",
+    "--label-primary", "K3", "--label-secondary", "deepseek-flash");
+  assert.deepEqual(st.labels, { primary: "K3", secondary: "deepseek-flash" });
+
+  touchDoc();
+  run("record-modify", "--doc", "docs/A.md");
+  assert.match(git("log", "--oneline", "-1"), /\[crosscheck\] 修订 \(K3\) - Round 1/);
+
+  run("record-review", "--doc", "docs/A.md", "--before");
+  writeReview("结论: [FAIL]");
+  const after = run("record-review", "--doc", "docs/A.md", "--after");
+  assert.match(git("log", "--oneline", "-1"), /\[crosscheck\] 审核 \(deepseek-flash\) - Round 1/);
+
+  const v = run("verdict", "--repo", repo);
+  assert.equal(v.loops[0].modifier, "K3"); // slot label resolved to model name
+  assert.deepEqual(v.loops[0].labels, { primary: "K3", secondary: "deepseek-flash" });
+  assert.equal(after.modifier_slot, "primary");
+});
