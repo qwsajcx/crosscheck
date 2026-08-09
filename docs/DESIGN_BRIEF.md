@@ -281,3 +281,13 @@ R8 修改者子代理（deepseek-flash）返回时声称"循环已到终态"—�
 ### §11 追记二：429/限流的循环策略
 
 官方错误码语义（error-reference 页，当日核对）：`engine overloaded`/`too many requests` = 瞬时拥塞可退避重试；`usage limit for this period`（5h 滚动窗）/`monthly usage limit` = 配额耗尽，重试无意义只能等重置。SKILL.md 故障节据此定义：瞬时型 `sleep 60 → 5min → 15min` 最多重试 3 次（期间不调 record）；配额型 `pause --reason` 暂停并告知重置窗口。`pause`/`abort` 新增 `--reason` 参数落入 `state.note`，verdict 输出与 SessionStart hook 提示都会显示，resume 自动清除。另明确：StopFailure / 用户 Esc 中断时 Stop hook 不触发，循环停在 running 属预期，靠 SessionStart 检测 + resume 恢复。单测 12/12。
+
+### §11 追记三（2026-08-08 晚）：Stop payload 探针定论与"去指令化"修复
+
+探针实证（`/tmp/crosscheck-stop-payloads.jsonl`，真实会话抓取）：
+
+1. **Stop hook 对子代理回合结束确实触发**，且 payload 与主会话**完全同形**：`{hook_event_name, session_id（主会话 id）, cwd, client_type, session_title, stop_hook_active}`，10/10 条无任何子代理标记字段，`stop_hook_active` 恒 false。**字段检测方案判死刑**，stop-guard 中候选键检测已失去意义（保留无害，永不命中）。
+2. **hook 代码热加载**：插件安装后改动 managed 副本的 hook 当会话即生效，无需 /reload（session_start 类事件未测）。
+3. **越权接管第二次发生（MiMo V2.5 Pro）**：探针子代理收到阻断后，因双受众消息的"子代理"分支以"任务提示词让你修改/审核文档"为判据，探针任务不匹配该判据，它把自己归入"主会话编排器"分支并照做——跑出完整 4 轮循环。**教训：让接收方自判身份的消息设计不可靠。**
+4. **修复定稿（去指令化）**：阻断消息改为**纯状态提示**——只列未完成循环 + 一条只读 `verdict` 命令 + "编排器按 skill 推进/子代理忽略"的固定句式，不含任何可执行的推进命令（推进流程本就写在 SKILL.md，hook 不需要教）。回归探针（MiMo）验证通过：被阻断一次后正确忽略、无越权。子代理被阻断的代价固定为多发一轮响应，可接受。
+5. 副发现：越权 MiMo 代理连主会话的 TodoList 都接管了——再次印证"子代理收到编排指令"的攻击面必须按零信任处理。
