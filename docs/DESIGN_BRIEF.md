@@ -291,3 +291,24 @@ R8 修改者子代理（deepseek-flash）返回时声称"循环已到终态"—�
 3. **越权接管第二次发生（MiMo V2.5 Pro）**：探针子代理收到阻断后，因双受众消息的"子代理"分支以"任务提示词让你修改/审核文档"为判据，探针任务不匹配该判据，它把自己归入"主会话编排器"分支并照做——跑出完整 4 轮循环。**教训：让接收方自判身份的消息设计不可靠。**
 4. **修复定稿（去指令化）**：阻断消息改为**纯状态提示**——只列未完成循环 + 一条只读 `verdict` 命令 + "编排器按 skill 推进/子代理忽略"的固定句式，不含任何可执行的推进命令（推进流程本就写在 SKILL.md，hook 不需要教）。回归探针（MiMo）验证通过：被阻断一次后正确忽略、无越权。子代理被阻断的代价固定为多发一轮响应，可接受。
 5. 副发现：越权 MiMo 代理连主会话的 TodoList 都接管了——再次印证"子代理收到编排指令"的攻击面必须按零信任处理。
+
+### §11 追记四（2026-08-09）：某保密项目 双系统撞车事件与处置
+
+**事件**：插件循环与 headless 循环在 某保密项目 **同一工作树、同一文档**上并发运行，双向污染。证据：
+
+1. 插件两循环（REQUIREMENTS/DEVELOPMENT_PLAN 迭代B）status=running，review_file 与 headless 同路径（`需求稿B.review.md`）——两边的新鲜度校验与结论行解析互相读对方的文件。
+2. git log 已交织：`[crosscheck] 修订 (K3) - Round 1`（插件）叠在 `[Kimi K3 (max)] 修订 - Round 2`（headless）之上，同一分支 review-loop/<保密分支> 出现两套重复 Round 编号。
+3. headless 的 K3 战斗进程（全局 home 的 kimi -p）被插件 stop-guard 反复阻断，agents.log 中 8 处 crosscheck 字样，K3 已在推理"我是主会话中的修改者角色"——身份混淆，headless 基线输出可信度已受损。（GPT 侧用隔离 home，无插件，未受影响。）
+
+**根因**：两条架构共享提示词契约、review 文件命名、git 纪律，但从未设计过"同仓库同文档并发"；插件 hooks 是 per-user 全局生效，无法区分"本仓库的 headless 进程"与"本仓库的插件会话"。
+
+**处置（先记录后执行，本条目即记录）**：
+- ✅ 暂停插件两个循环（`pause --reason`），立即停止 stop-guard 对 headless K3 进程的阻断，插件侧可 resume 无损恢复；
+- ✅ headless 循环（PID 56071，GPT xhigh 审核在飞）不动——杀它会浪费已耗额度并产生孤儿进程；
+- ✅ 某保密项目 的 git 历史不回退（headless 正在该分支上提交，改写历史会造成二次伤害），待 headless 跑完由用户决定如何处理插件的混入提交 `<提交哈希>`；
+- ✅ 插件源码侧 WIP（executors/run_role 三角色功能）隔离到 `feat/cli-executor` 分支，main 停在 4d96141；**生产跑期间冻结 managed 副本同步**。
+
+**教训（插件设计级）**：
+1. 同一仓库同一文档**禁止**双系统并发——SKILL 前置清单需加"headless 运行检测"（`.review-loop/` 最新目录的 status.json 是否 running / orchestrator.pid 是否存活）。
+2. 反向也一样：headless 启动前也应检测 `.crosscheck/` 有无 running 循环（legacy 侧加提示，或至少文档警告）。
+3. stop-guard 的全局生效面再次证明比预期大（headless `kimi -p` 进程也会触发）；cue 化消息把伤害降到了"一轮困惑"级别，但身份混淆仍发生了——长期方案应是 hooks 能区分进程角色（已向官方求证无字段，可考虑给 headless 侧隔离 home 彻底化）。
