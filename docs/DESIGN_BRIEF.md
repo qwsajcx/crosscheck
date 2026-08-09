@@ -312,3 +312,28 @@ R8 修改者子代理（deepseek-flash）返回时声称"循环已到终态"—�
 1. 同一仓库同一文档**禁止**双系统并发——SKILL 前置清单需加"headless 运行检测"（`.review-loop/` 最新目录的 status.json 是否 running / orchestrator.pid 是否存活）。
 2. 反向也一样：headless 启动前也应检测 `.crosscheck/` 有无 running 循环（legacy 侧加提示，或至少文档警告）。
 3. stop-guard 的全局生效面再次证明比预期大（headless `kimi -p` 进程也会触发）；cue 化消息把伤害降到了"一轮困惑"级别，但身份混淆仍发生了——长期方案应是 hooks 能区分进程角色（已向官方求证无字段，可考虑给 headless 侧隔离 home 彻底化）。
+
+---
+
+## 12. 项目暂停快照（2026-08-09）
+
+**状态：暂停。** 原因：某保密项目 文档今日必须审完（headless 版在跑，PID 级生产任务），插件开发让路。本文件即冷启动恢复入口。
+
+### 暂停时的完整状态
+
+- 代码：master = `66febf5`（已验证：单测 12/12、hooks 四场景模拟通过、M2 冒烟 4 轮 PASS）；未验证的三角色 CLI 执行器 WIP 在 `feat/cli-executor`（`f7369ff`，含 `executors` 状态字段 + `scripts/run_role.mjs`）。
+- 已安装副本（`~/.kimi-code/plugins/managed/crosscheck/`）= master 内容，**同步冻结中**；恢复开发后先 diff 再同步。
+- 某保密项目 两个插件循环已 pause（reason 写明撞车原委），等 headless 跑完决定：在其干净分支上 resume 或 `init --force` 重开。
+- 某保密项目 插件混入提交 `<提交哈希>` 待用户处置（revert 或接受）。
+
+### 恢复时的待决策项（按序）
+
+1. **三角色拓扑选型**（用户最后的问题）：官方已实证子代理模型仅 primary/secondary 两槽（agents/config-files/env-vars 三页交叉确认），第三模型只能走 `kimi -p` CLI（feat/cli-executor 半成品）或接受双槽拓扑（K3 会话编排+战士 / secondary=GPT xhigh，全程 in-TUI 子代理）。证据与权衡见上次会话结论。
+2. **M3 重跑**：headless 完成后，某保密项目 开专用分支/worktree，deepseek 或选定模型编排，K3↔GPT 互审，与 §9 基准对比。
+3. **前置清单补 headless 检测**（§11 追记四教训 1）：`.review-loop/` 活跃则不启动。
+4. M4 余项：SessionStart stdout 注入实证、compaction 恢复实测。
+5. M5 打包：README、marketplace JSON、干净重装验证、`/plugins info` 诊断。
+
+### 给其他仓库使用者的警告（暂停期间仍生效）
+
+插件 hooks 是 per-user 全局的：任何 cwd 树下存在 running 状态 `.crosscheck/` 的仓库，其内**所有** kimi 会话（含 headless `kimi -p` 进程）的回合结束都会被 stop-guard 评估。暂停期间 某保密项目 的两个状态文件均为 paused，不会阻断；若要彻底免疫，恢复开发前不要在那里 resume。
