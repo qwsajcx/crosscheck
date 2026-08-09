@@ -14,7 +14,7 @@
 
 1. **提交**：客户端调用 `POST /tasks` 提交任务（基于 `task_id` 的提交端幂等：Redis `SET task:submit:<task_id> 1 NX EX 3600` 去重，重复提交返回已有任务信息），任务入 List 尾部，同时向 Stream 追加 `task_submitted` 事件。
 2. **排队**：任务在 List 中等待 Worker 消费。
-3. **执行**：Worker 从 List 头部 BRPOP 取出任务，更新状态为 `running`，Stream 追加 `task_started` 事件。
+3. **执行**：Worker 从 List 头部 BLPOP 取出任务，更新状态为 `running`，Stream 追加 `task_started` 事件。
 4. **完成**：Worker 执行完毕，写入结果到 MySQL，Stream 追加 `task_completed` 事件。
 5. **失败**：Worker 执行异常，Stream 追加 `task_failed` 事件（payload 含 `error`、`retry_count`），进入重试队列。
 6. **重试**：重试间隔到期后任务重新入队，Stream 追加 `task_retrying` 事件（payload 含 `retry_count`、`next_attempt_at`）。
@@ -39,11 +39,11 @@
 
 ## 优先级与调度
 
-任务支持 3 个优先级：`high`(2)、`normal`(1)、`low`(0)。优先级通过独立 List 实现——每个优先级对应一个 Redis List（`tasks:high`、`tasks:normal`、`tasks:low`），Worker 按优先级从高到低依次尝试 BRPOP。
+任务支持 3 个优先级：`high`(2)、`normal`(1)、`low`(0)。优先级通过独立 List 实现——每个优先级对应一个 Redis List（`tasks:high`、`tasks:normal`、`tasks:low`），Worker 按优先级从高到低依次尝试 BLPOP。
 
 **饥饿防护**：每消费 10 个高优先级任务后，强制从 `tasks:normal` 或 `tasks:low` 尝试消费 1 次（优先 normal），避免低优先级任务长期得不到执行。
 
-高优先级任务配额：高优先级任务占比不超过总提交量的 20%，超过配额的 high 任务降级为 normal 入队。配额统计基于滑动窗口（最近 1 分钟的提交量），窗口内不足 50 条时不触发配额限制。
+高优先级任务配额：高优先级任务占比不超过总提交量的 20%，超过配额的 high 任务降级为 normal 入队。配额统计基于滑动窗口（最近 1 分钟的提交量），实现方式为 Redis Sorted Set（`ZADD quota:high <timestamp> <unique_id>` + `ZRANGEBYSCORE quota:high <now-60s> <now>` 计数 + `ZREMRANGEBYSCORE` 清理过期成员），窗口内不足 50 条时不触发配额限制。
 
 ## 重试机制
 
@@ -55,7 +55,7 @@
 
 Worker 进程池大小动态调整：默认最小 4 个、最大 32 个 Worker，基于队列深度自动伸缩。队列深度低于 100 时缩容到最小值，高于 5000 时扩容到最大值。
 
-Worker 健康检查：每个 Worker 每 5 秒向 Redis 发送心跳（`HSET workers:heartbeat <worker_id> <timestamp>`），主控进程检测超过 15 秒未心跳的 Worker 并回收其正在执行的任务。
+Worker 健康检查：每个 Worker 每 5 秒向 Redis 发送心跳（`HSET workers:heartbeat <worker_id> <timestamp>`），主控进程检测超过 30 秒未心跳的 Worker 并回收其正在执行的任务。30 秒阈值 = 切换窗口（≤ 15 秒）+ 心跳间隔（5 秒）+ 安全余量（10 秒），避免主控切换期间误判健康 Worker。
 
 **主控进程部署与容灾**：主控进程采用主备 + Redis 选主（`SET controller:leader <instance_id> NX EX 10`，续约周期 5 秒）部署。备实例检测到选主 key 过期后自动竞选接管。主控不可用期间（切换窗口 ≤ 15 秒），Worker 自检心跳写入时间戳，若超过 30 秒未见主控续约，自行完成当前任务后安全退出，避免任务悬挂。
 
@@ -77,8 +77,8 @@ CREATE TABLE task_results (
   result        JSON,
   retry_count   TINYINT UNSIGNED NOT NULL DEFAULT 0,
   timeout_sec   SMALLINT UNSIGNED NOT NULL DEFAULT 10,
-  created_at    DATETIME NOT NULL,
-  completed_at  DATETIME NOT NULL,
+  created_at    DATETIME NOT NULL COMMENT 'UTC 时间，写入方必须保证使用 UTC',
+  completed_at  DATETIME NOT NULL COMMENT 'UTC 时间，写入方必须保证使用 UTC',
   worker_id     VARCHAR(64),
   INDEX idx_type_status (type, status),
   INDEX idx_completed_at (completed_at),
@@ -90,7 +90,7 @@ CREATE TABLE task_results (
 
 ## 结果获取
 
-客户端通过 `GET /tasks/{task_id}` 轮询任务状态与结果。响应包含当前状态（`queued`、`running`、`completed`、`dead`），任务完成时附带结果 JSON，未完成时仅返回状态与排队位置。可选配置 Webhook 回调 URL（在 `POST /tasks` 请求体中传入 `callback_url` 字段），任务完成或标记为 `dead` 时向该 URL 发送 POST 通知。
+客户端通过 `GET /tasks/{task_id}` 轮询任务状态与结果。响应包含当前状态（`queued`、`running`、`retrying`、`completed`、`dead`），任务完成时附带结果 JSON，未完成时仅返回状态与排队位置（排队位置定义为任务所在优先级 List 内的 LLEN 排名，不跨优先级计算）。可选配置 Webhook 回调 URL（在 `POST /tasks` 请求体中传入 `callback_url` 字段），任务完成或标记为 `dead` 时向该 URL 发送 POST 通知。
 
 ## 限流与背压
 
@@ -111,10 +111,10 @@ CREATE TABLE task_results (
 
 ## 部署
 
-Redis 使用 Sentinel 模式部署（1 主 + 2 从 + 3 Sentinel），内存各配置 16GB，Sentinel 自动故障转移。主从切换对 BRPOP 的影响：Sentinel 完成切换后客户端自动重连新主节点，切换窗口期间（通常 ≤ 5 秒）BRPOP 返回超时，Worker 自动重试。Stream 消费组在切换后自动在新主上重建。Worker 进程部署在独立容器中，通过环境变量 `REDIS_URL` 连接 Redis Sentinel。MySQL 结果存储复用现有分析库实例。
+Redis 使用 Sentinel 模式部署（1 主 + 2 从 + 3 Sentinel），内存各配置 16GB，Sentinel 自动故障转移。主从切换对 BLPOP 的影响：Sentinel 完成切换后客户端自动重连新主节点，切换窗口期间（通常 ≤ 5 秒）BLPOP 返回超时，Worker 自动重试。Stream 消费组在切换后自动在新主上重建；注意 Sentinel 异步复制下，尚未 XACK 的 pending entries（PEL）可能因复制延迟在切换后丢失，消费端（主控进程）对所有事件做幂等处理（基于 `task_id` + 事件类型去重），确保重复消费不会产生副作用。Worker 进程部署在独立容器中，通过环境变量 `REDIS_URL` 连接 Redis Sentinel。MySQL 结果存储复用现有分析库实例。
 
 ## 故障处理
 
 - **Redis 不可用**：Worker 暂停消费并本地缓存正在执行的任务结果，Redis 恢复后批量写入；新提交请求直接返回 `503 Service Unavailable`。
-- **Worker 崩溃**：心跳超时后主控进程回收其任务，回收前通过分布式锁（`SET task:lock:<task_id> <new_worker_id> NX EX <timeout_sec>`）确保同一任务不被并发执行。新 Worker 获取锁成功后方可重新执行该任务，获取失败则跳过等待锁释放。任务重新入队等待其他 Worker 消费。
+- **Worker 崩溃**：心跳超时后主控进程回收其任务，回收前通过分布式锁（`SET task:lock:<task_id> <new_worker_id> NX EX <timeout_sec>`）确保同一任务不被并发执行。新 Worker 获取锁成功后方可重新执行该任务，获取失败则跳过。主控进程每 60 秒扫描一次持锁超时（锁 key 已过期但任务未完成）的任务，重新触发回收流程，避免原 Worker 崩溃后任务因锁过期而成为孤儿。任务重新入队等待其他 Worker 消费。
 - **MySQL 不可用**：任务执行结果暂存 Worker 本地文件（JSON Lines 格式），MySQL 恢复后批量导入；暂存文件最多保留 24 小时。
