@@ -85,12 +85,18 @@ async function main() {
   if (loops.length === 0) process.exit(0);
 
   const script = path.join(process.env.KIMI_PLUGIN_ROOT || ".", "scripts", "crosscheck_state.mjs");
+  const repo = path.dirname(stateDir);
   const lines = loops.map((l) => `  - ${l.doc}  Round ${l.round}  phase=${l.phase}  (${l.file})`);
+  // NOTE: this fires on EVERY model turn end — sub-agents included — and the
+  // payload carries no field that could tell them apart (verified 2026-08-08,
+  // see DESIGN_BRIEF §11). So the message must stay a cue, not a command:
+  // twice already, cheap sub-agents "complied" with an imperative block
+  // message and usurped orchestration. Read-only pointers only.
   console.error(
     `[crosscheck] 审核循环未到达终态：\n${lines.join("\n")}\n` +
-    `判断你的身份再行动：\n` +
-    `- 如果你是子代理（任务提示词让你修改或审核文档）：本消息不是给你的。不要执行任何状态脚本/git 命令，不要派更多子代理，直接返回你的任务总结。\n` +
-    `- 如果你是主会话编排器：按 crosscheck skill 继续推进（状态脚本 node ${script}）；用户已明确要求停止时，先 node ${script} pause --doc <文档> 或 abort --doc <文档> 再收工。`
+    `查看状态（只读）：node ${script} verdict --repo ${repo}\n` +
+    `本消息由 Stop hook 自动发出。主会话编排器：按 crosscheck skill 的流程继续推进即可。` +
+    `子代理：忽略本消息，直接返回你的任务总结，不要执行任何状态/写操作命令。`
   );
   process.exit(2);
 }
