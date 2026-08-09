@@ -54,6 +54,7 @@ async function main() {
       if (st.status === "running" || st.status === "paused") {
         notes.push(
           `  - ${st.doc}: Round ${st.round}, phase=${st.phase}, status=${st.status}` +
+          (st.note ? `（备注：${st.note}）` : "") +
           (st.status === "paused" ? "（已暂停，resume 可续跑）" : "（上次会话中断，可继续）")
         );
       }

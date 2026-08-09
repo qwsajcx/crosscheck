@@ -81,6 +81,11 @@ Stop hook 会阻断你在未达终态时收工。**用户说停就停**，不要
 ## 故障与恢复
 
 - **子代理报错/超时/没干完**：状态不会被污染（record 还没调）。直接重派该子代理重试一次；再失败则告诉用户、暂停循环（pause），不要空转烧轮次。
+- **429 / 限流（子代理模型调用被拒）**：先看错误文案分两类处理（官方错误码语义）：
+  - `The engine is currently overloaded` / `receiving too many requests` → 瞬时拥塞，**退避重试**：`sleep 60` 后重派同一子代理，最多 3 次（间隔 60s → 5min → 15min），期间不调用任何 record 子命令。
+  - `usage limit for this period`（5 小时滚动窗）/ `monthly usage limit` → 配额耗尽，**重试无意义**：`node state.mjs pause --doc <文档> --reason "429 配额耗尽，等配额窗口重置"`，告知用户重置窗口（5 小时滚动/月度），等用户说继续再 `resume`。
+  - 注意区分是哪个模型 429：只有报错槽位对应的模型受限；用户可能愿意临时改用另一槽位模型继续（回到前置清单第 3 项确认）。
+- **会话因错误中断（StopFailure）或用户 Esc 中断**：Stop hook 此时不触发，循环会停在 `running` 状态没人推——这是预期行为。下次会话 SessionStart hook 会提示"发现未完成循环"，用户说继续就从中断的 phase 接着跑。
 - **上下文被压缩后**：第一件事是 `node state.mjs verdict --repo <仓库根>` 读全部循环状态，从 `phase` 指示的阶段继续，不要凭记忆跳步。
 - **状态文件损坏**：脚本会报错。不要手改状态文件修复不了的字段；最坏情况 `init --force` 重开（git 历史仍在）。
 - **审核子代理没写审核文件**：`record-review --after` 会判定 `fresh=false`、结论忽略并继续——但连续发生说明子代理有问题，重派或换提示词重申落盘契约。

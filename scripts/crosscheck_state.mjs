@@ -18,7 +18,7 @@
  *   record-modify  --doc <path>
  *   record-review  --doc <path> (--before | --after)
  *   verdict        --doc <path> | --repo <path>
- *   pause|abort|resume --doc <path>
+ *   pause|abort|resume --doc <path> [--reason "why"]  (reason stored as state.note)
  *
  * Every command prints ONE line of JSON to stdout: {ok:true, ...} on success
  * (the `next` field tells the orchestrator what to do), or exits 1 with
@@ -354,6 +354,7 @@ function cmdVerdict(args) {
     modifier_slot: st.modifier_slot,
     modifier: labelOf(st, st.modifier_slot),
     labels: st.labels || {},
+    note: st.note || null,
     last_verdict: st.verdicts.length ? st.verdicts[st.verdicts.length - 1] : null,
   });
   if (args.repo && !args.doc) {
@@ -381,6 +382,14 @@ function cmdSetStatus(args, status) {
   }
   st.status = status;
   if (status === "aborted") st.phase = "done";
+  // Optional human note explaining WHY the loop was paused/aborted (e.g.
+  // "429 quota exhausted, wait for 5h window reset"); shown by verdict and
+  // the session-start hook. Cleared on resume.
+  if (status === "running") {
+    delete st.note;
+  } else if (args.reason) {
+    st.note = args.reason;
+  }
   saveState(file, st);
   print(st, { next: status === "running" ? st.phase : `done:${status}` });
 }

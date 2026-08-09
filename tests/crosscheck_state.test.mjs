@@ -225,6 +225,22 @@ test("pause / resume / abort semantics", (t) => {
   assert.match(err.error, /already finished/);
 });
 
+test("pause --reason stores a note, resume clears it", (t) => {
+  const { run, init } = makeRepo(t);
+  init();
+
+  let st = run("pause", "--doc", "docs/A.md", "--reason", "429 配额耗尽，等 5 小时窗口重置");
+  assert.equal(st.status, "paused");
+  assert.equal(st.note, "429 配额耗尽，等 5 小时窗口重置");
+
+  const v = run("verdict", "--doc", "docs/A.md");
+  assert.equal(v.note, "429 配额耗尽，等 5 小时窗口重置");
+
+  st = run("resume", "--doc", "docs/A.md");
+  assert.equal(st.status, "running");
+  assert.equal(st.note, undefined);
+});
+
 test("verdict and status commands summarize state", (t) => {
   const { run, init, touchDoc, writeReview, repo } = makeRepo(t);
   init();

@@ -277,3 +277,7 @@ R8 修改者子代理（deepseek-flash）返回时声称"循环已到终态"—�
 ### §11 追记（2026-08-08）：启动时确认 A/B 模型
 
 用户反馈偏差修正：原设计只"告知"槽位绑定，现改为**启动时显式询问**。SKILL.md 前置清单第 3 项改为用 AskUserQuestion 与用户确认两件事——A/B 各用哪个模型（展示当前 primary/secondary 真实绑定，想换则先 `/secondary_model` 或 `/model`）、谁先修改谁先审（`--modifier-slot` 控制）；auto 模式下不提问、按当前绑定继续并显式声明。确认结果经 `init --label-primary/--label-secondary` 落进状态文件，提交信息与 verdict/status 输出使用真实模型名（修复了 deepseek 轮"槽位标签≠真实模型"的簿记失真）。状态机向后兼容：无 labels 的旧状态文件回退显示槽位名。单测 11/11。
+
+### §11 追记二：429/限流的循环策略
+
+官方错误码语义（error-reference 页，当日核对）：`engine overloaded`/`too many requests` = 瞬时拥塞可退避重试；`usage limit for this period`（5h 滚动窗）/`monthly usage limit` = 配额耗尽，重试无意义只能等重置。SKILL.md 故障节据此定义：瞬时型 `sleep 60 → 5min → 15min` 最多重试 3 次（期间不调 record）；配额型 `pause --reason` 暂停并告知重置窗口。`pause`/`abort` 新增 `--reason` 参数落入 `state.note`，verdict 输出与 SessionStart hook 提示都会显示，resume 自动清除。另明确：StopFailure / 用户 Esc 中断时 Stop hook 不触发，循环停在 running 属预期，靠 SessionStart 检测 + resume 恢复。单测 12/12。
