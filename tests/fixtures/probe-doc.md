@@ -8,7 +8,7 @@
 
 任务队列采用 Redis List + Stream 混合结构：List 负责 FIFO 排队，Stream 负责任务生命周期事件（提交、开始、完成、失败、重试、死亡）的持久化与消费确认。Worker 进程池消费 List 中的任务，执行完成后将结果写入结果存储（MySQL），并通过 Stream 确认完成。
 
-**Stream 消费组设计**：所有生命周期事件写入名为 `task_events` 的 Stream。主控进程通过消费组 `task_events_consumers` 消费事件，用于状态审计和监控聚合。每条事件在消费后立即 `XACK` 确认。Stream 设置 `MAXLEN ~`（近似裁剪），保留上限为 100 万条，防止无限增长。
+**Stream 消费组设计**：所有生命周期事件写入名为 `task_events` 的 Stream。主控进程通过消费组 `task_events_consumers` 消费事件，用于状态审计和监控聚合。每条事件在消费后立即 `XACK` 确认。Stream 设置 `MAXLEN ~`（近似裁剪），保留上限为 100 万条，防止无限增长。近似裁剪的实际保留量可能偏差约 ±10%（Redis 实现特性），审计场景下此偏差可接受；若需精确审计窗口，改用精确 `MAXLEN`（无 `~`）或结合定期归档策略。
 
 ### 任务生命周期
 
@@ -39,9 +39,11 @@
 
 ## 优先级与调度
 
-任务支持 3 个优先级：`high`(2)、`normal`(1)、`low`(0)。优先级通过独立 List 实现——每个优先级对应一个 Redis List（`tasks:high`、`tasks:normal`、`tasks:low`），Worker 按优先级从高到低依次尝试 BLPOP。
+任务支持 3 个优先级：`high`(2)、`normal`(1)、`low`(0)。优先级通过独立 List 实现——每个优先级对应一个 Redis List（`tasks:high`、`tasks:normal`、`tasks:low`），Worker 按优先级从高到低依次尝试消费。
 
-**饥饿防护**：每消费 10 个高优先级任务后，强制从 `tasks:normal` 或 `tasks:low` 尝试消费 1 次（优先 normal），避免低优先级任务长期得不到执行。
+**消费策略**：Worker 正常循环使用 `BLPOP tasks:high tasks:normal tasks:low TIMEOUT 1`（超时后重试，避免永久阻塞）。`BLPOP` 按 key 顺序返回第一个非空列表的元素——当高优先级队列持续非空时，较低优先级队列将被跳过。
+
+**饥饿防护**：Worker 维护高优先级消费计数器，每消费 10 个高优先级任务后进入非阻塞检查点——先用 `LPOP tasks:normal`（无数据则 `LPOP tasks:low`）尝试非阻塞消费较低优先级任务，成功则执行并重置计数器，无数据则回退到正常 BLPOP 循环。此机制确保在高优先级任务持续到达时，较低优先级任务仍有机会得到执行。
 
 高优先级任务配额：高优先级任务占比不超过总提交量的 20%，超过配额的 high 任务降级为 normal 入队。配额统计基于滑动窗口（最近 1 分钟的提交量），实现方式为 Redis Sorted Set（`ZADD quota:high <timestamp> <unique_id>` + `ZRANGEBYSCORE quota:high <now-60s> <now>` 计数 + `ZREMRANGEBYSCORE` 清理过期成员），窗口内不足 50 条时不触发配额限制。
 
@@ -49,7 +51,7 @@
 
 任务执行失败后按指数退避重试：第 1 次间隔 1 秒，第 2 次间隔 5 秒，第 3 次间隔 15 秒。超过最大重试次数（默认 3 次）后标记为 `dead`，写入死信队列。
 
-重试任务保持原始 `task_id`，`retry_count` 递增。Worker 通过 `task_id` + `retry_count` 幂等判断，防止重复执行。
+重试任务保持原始 `task_id`，`retry_count` 递增。Worker 通过 `task_id` + `retry_count` 幂等判断，防止重复执行。重试任务入队时保持首次入队时的实际优先级（而非原始提交优先级），且不重新检查配额——重试已在系统内的任务不应额外消耗高优先级配额。
 
 ## Worker 管理
 
@@ -90,12 +92,12 @@ CREATE TABLE task_results (
 
 ## 结果获取
 
-客户端通过 `GET /tasks/{task_id}` 轮询任务状态与结果。响应包含当前状态（`queued`、`running`、`retrying`、`completed`、`dead`），任务完成时附带结果 JSON，未完成时仅返回状态与排队位置（排队位置定义为任务所在优先级 List 内的 LLEN 排名，不跨优先级计算）。可选配置 Webhook 回调 URL（在 `POST /tasks` 请求体中传入 `callback_url` 字段），任务完成或标记为 `dead` 时向该 URL 发送 POST 通知。
+客户端通过 `GET /tasks/{task_id}` 轮询任务状态与结果。响应包含当前状态（`queued`、`running`、`retrying`、`completed`、`dead`），任务完成时附带结果 JSON，未完成时仅返回状态与排队位置（排队位置定义为任务所在优先级 List 内的 LLEN 排名，不跨优先级计算）。可选配置 Webhook 回调 URL（在 `POST /tasks` 请求体中传入 `callback_url` 字段），任务完成或标记为 `dead` 时向该 URL 发送 POST 通知（单次超时 5 秒）。发送失败时按指数退避重试 3 次（间隔 1s / 5s / 15s），最终失败后向 `task_events` Stream 追加 `webhook_failed` 事件（payload 含 `task_id`、`callback_url`、`final_status_code`），并在任务结果表中记录 `webhook_delivery_status = 'failed'`。客户端应以 GET 轮询作为 Webhook 通知的回退保障。
 
 ## 限流与背压
 
 - 入队限流：队列积压超过 10000 时，`POST /tasks` 返回 `429 Too Many Requests`，响应头 `Retry-After` 指示预估等待秒数。
-- 出队背压：Worker 消费速率受 Redis 内存压力影响；Redis 内存使用超过 80% 时暂停消费，等待内存回落。
+- 出队背压：Worker 消费速率受 Redis 内存压力影响；Redis 内存使用超过 80% 时暂停消费。内存回落至 70% 以下时恢复全速消费；70%–80% 之间以 50% 速率渐进恢复，避免暂停-恢复振荡。
 - 客户端重试：客户端收到 429 后按 `Retry-After` 等待后重试，最多重试 3 次。
 
 ## 监控指标
@@ -116,5 +118,5 @@ Redis 使用 Sentinel 模式部署（1 主 + 2 从 + 3 Sentinel），内存各�
 ## 故障处理
 
 - **Redis 不可用**：Worker 暂停消费并本地缓存正在执行的任务结果，Redis 恢复后批量写入；新提交请求直接返回 `503 Service Unavailable`。
-- **Worker 崩溃**：心跳超时后主控进程回收其任务，回收前通过分布式锁（`SET task:lock:<task_id> <new_worker_id> NX EX <timeout_sec>`）确保同一任务不被并发执行。新 Worker 获取锁成功后方可重新执行该任务，获取失败则跳过。主控进程每 60 秒扫描一次持锁超时（锁 key 已过期但任务未完成）的任务，重新触发回收流程，避免原 Worker 崩溃后任务因锁过期而成为孤儿。任务重新入队等待其他 Worker 消费。
-- **MySQL 不可用**：任务执行结果暂存 Worker 本地文件（JSON Lines 格式），MySQL 恢复后批量导入；暂存文件最多保留 24 小时。
+- **Worker 崩溃**：心跳超时后主控进程回收其任务，回收前通过分布式锁（`SET task:lock:<task_id> <new_worker_id> NX EX <timeout_sec>`）确保同一任务不被并发执行。新 Worker 获取锁成功后方可重新执行该任务，获取失败则跳过。主控进程每 60 秒扫描一次持锁超时（锁 key 已过期但任务未完成）的任务，重新触发回收流程，避免原 Worker 崩溃后任务因锁过期而成为孤儿。锁超时设置为 `timeout_sec + 30 秒`安全余量，确保正常执行期间锁不会提前过期；扫描间隔固定为 60 秒（约为典型任务 `timeout_sec` 的 1/2 以下），扫描逻辑仅处理锁已过期的任务，未过期的跳过。任务重新入队等待其他 Worker 消费。
+- **MySQL 不可用**：任务执行结果暂存 Worker 本地文件（JSON Lines 格式），MySQL 恢复后批量导入；暂存文件最多保留 7 天，与结果保留期对齐。暂存数据超过保留期仍未导入时触发告警。
