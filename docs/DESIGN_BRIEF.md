@@ -188,11 +188,11 @@ manifest 草案：
 
 ## 8. 里程碑
 
-1. **M1 骨架与状态机**：目录结构 + manifest + `crosscheck_state` 脚本单测（init/advance/verdict/no-progress/新鲜度）。✅ 2026-08-08 完成（单测 10/10）。
+1. **M1 骨架与状态机**：目录结构 + manifest + `crosscheck_state` 脚本单测（init/advance/verdict/no-progress/新鲜度）。✅ 2026-08-08 完成（单测 12/12）。
 2. **M2 单模型冒烟**：primary 自改自审一份测试文档，验证 Stop hook 循环与状态推进（先不接第二模型）。✅ 2026-08-08 完成，实测记录见 §10。
-3. **M3 双模型接线**：按 §5.1 配置 secondary=gpt-5.6-sol xhigh，跑通 K3↔GPT 交叉审核一份真实文档。
-4. **M4 恢复与异常路径**：SessionStart 检测续跑、compaction 恢复、pause/abort；Stop hook payload 字段实测（见 §10 遗留项）。
-5. **M5 打磨发布**：通知 hook、status 命令、README、本地 marketplace JSON（`/plugins marketplace` 自定义源）验证安装。
+3. **M3 双模型接线**：按 §5.1 配置 secondary=gpt-5.6-sol xhigh，跑通 K3↔GPT 交叉审核一份真实文档。✅ 2026-08-09~16 在生产仓库完成：某保密项目 四份 两个迭代 文档全部 PASS（K3↔GPT-5.6 Sol，各 4 轮收敛 FAIL×3→PASS，终态样本在 `examples/state-json-samples/`）。
+4. **M4 恢复与异常路径**：SessionStart 检测续跑、compaction 恢复、pause/abort；Stop hook payload 字段实测（见 §10 遗留项）。✅ 主体完成（payload 已定论无子代理字段、pause/abort/resume 实证、429 策略、撞车处置）；SessionStart stdout 注入与 compaction 恢复未专项实证，不阻塞发布。
+5. **M5 打磨发布**：通知 hook、status 命令、README、本地 marketplace JSON（`/plugins marketplace` 自定义源）验证安装。⏳ 进行中（README/marketplace.json/manifest 0.2.0 就绪；干净重装与 `/plugins info` 诊断待用户在 TUI 验证）。
 
 ## 9. 当前运行实例快照（headless 版，2026-08-08 21:03）
 
@@ -337,3 +337,7 @@ R8 修改者子代理（deepseek-flash）返回时声称"循环已到终态"—�
 ### 给其他仓库使用者的警告（暂停期间仍生效）
 
 插件 hooks 是 per-user 全局的：任何 cwd 树下存在 running 状态 `.crosscheck/` 的仓库，其内**所有** kimi 会话（含 headless `kimi -p` 进程）的回合结束都会被 stop-guard 评估。暂停期间 某保密项目 的两个状态文件均为 paused，不会阻断；若要彻底免疫，恢复开发前不要在那里 resume。
+
+### §12 追记（2026-08-16）：M3 已在生产仓库完成，暂停解除
+
+暂停期间（08-09 撞车处置后），插件循环在 某保密项目 恢复并跑完全部四份 两个迭代 文档：K3↔GPT-5.6 Sol 双模型，REQUIREMENTS/DEVELOPMENT_PLAN 各 4 轮收敛 PASS（R1-R3 FAIL → R4 PASS，角色互换正常）；迭代A 两份各 1 轮 PASS（此前已经 headless 审过多轮，符合预期）。**M3 事实完成**，与 headless 基线的质量对比未做专项分析（可选后补）。本次发布准备：examples 换终态样本、manifest 0.2.0、marketplace.json、README 修正（安装命令原写成不存在的 `kimi /plugins` shell 形式；里程碑表更新）、SKILL 前置补 headless 活跃检测（§11 追记四教训落地）。遗留不阻塞项：SessionStart stdout 注入实证、compaction 恢复实测、三角色 CLI 执行器（feat/cli-executor，未纳入本版）。

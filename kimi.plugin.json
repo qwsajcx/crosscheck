@@ -1,6 +1,6 @@
 {
   "name": "crosscheck",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "TUI 内双模型文档交叉审核循环：修改者与审核者子代理交替工作直到 [PASS]，Stop hook 保证未达终态不收工",
   "skills": "./skills/",
   "commands": "./commands/",

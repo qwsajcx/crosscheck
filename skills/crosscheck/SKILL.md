@@ -29,6 +29,7 @@ description: TUI 内双模型文档交叉审核循环。修改者子代理改文
    - 例外：当前是 auto 权限模式（不能提问）时，按当前绑定继续，并在第一条进展消息里显式声明实际使用的 A/B 模型与角色方向。
 4. **工作区脏文件**：`git status --porcelain` 有无关改动时提醒一句：循环提交只含被管理的两个文件，其余原样保留。
 5. **未完成循环检测**：`node state.mjs verdict --repo <仓库根>`，若已有 running/paused 的同名文档循环，问用户续跑（resume）还是重置（init --force），不要默默覆盖。
+6. **headless 并发检测（2026-08-09 撞车教训，必须做）**：检查目标仓库是否存在活跃的 headless 审核——`ls -t <仓库根>/.review-loop/2*/status.json | head -1` 读最新 status.json，`state=running` 且对应 orchestrator.pid 进程存活（`kill -0 <pid>`）则为活跃。**同一文档上 headless 与插件并发会双向污染**（review 文件串写、提交交织、stop-guard 阻断 headless 进程），发现活跃 headless 循环时：不同文档→提醒用户后可继续；同文档→拒绝启动，建议等 headless 完成或换干净分支/worktree。
 
 ## 启动
 
