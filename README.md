@@ -24,18 +24,29 @@
 | 权限模式 yolo 或 auto | 否则每轮子代理和写文件都要人工确认 | 会话内 `/permission-mode` 切换 |
 | 配置好两个模型别名 | 互相审核的两个模型，需已存在于你的 `[models]` 配置 | 见下方池配置示例 |
 
-**推荐：把两个模型登记进子代理模型池**（`~/.kimi-code/config.toml`）。池 = `[secondary_model.models]` 里登记的"可派发子代理模型清单"，启动循环时从中挑选 A/B：
+**推荐：把两个模型登记进子代理模型池**（`~/.kimi-code/config.toml`）。池 = `[secondary_model.models]` 里登记的"可派发子代理模型清单"，启动循环时从中挑选 A/B。完整示例（含思考档位配置，可直接照抄后改别名）：
 
 ```toml
+# ---- 子代理模型池：循环里 A/B 两个角色从这里挑选 ----
 [secondary_model]
-default_model = "kimi-code/k3"
+default_model = "kimi-code/k3"          # 没特别指定时子代理的默认模型
 [secondary_model.models]
+# 键 = [models] 里已配置的别名；值 = 给编排者看的选用描述（写清楚它擅长什么）
 "kimi-code/k3" = "深度修改者：复杂推理与文档重写。"
 "kimi-code/kimi-for-coding" = "严格审核者：正确性/一致性/完整性/可执行性四维审查。"
 # ↑ 换成你自己 [models] 里配置好的任意两个别名
-```
 
-想给两个模型不同思考档位（如 K3 max / 另一模型 xhigh）：删除全局 `[thinking].effort`，改用 `[models."<别名>".overrides] default_effort` 分别钉档（池别名按"全局 effort → 模型默认档"解析，全局存在时全池同档）。
+# ---- 思考档位（effort）：给每个模型单独钉档 ----
+# effort 是该模型思考深度的档位（各模型支持的档位不同，写错会自动回退到该模型默认档）。
+# 解析顺序：全局 [thinking].effort（若设置，则压过下面所有钉档，全池同档）
+#          → 这里各别名的 default_effort（未设全局时生效）
+#          → 模型自带默认档
+# 想让 A/B 不同档（如修改者 max、审核者 high），请确认 config.toml 里【没有】全局 [thinking].effort 行。
+[models."kimi-code/k3".overrides]
+default_effort = "max"
+[models."kimi-code/kimi-for-coding".overrides]
+default_effort = "high"
+```
 
 池配置改完后 `/reload` 或新开会话生效。插件在启动循环时若发现所选别名不在池中，会（经你确认）自动备份并补写这部分配置，再提醒你 reload——上述手动配置只是让你提前就绪。
 
