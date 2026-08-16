@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "doc": "docs/PLAN.md",
+  "review_file": "docs/PLAN.review.md",
+  "repo": "/path/to/repo",
+  "state_file": ".crosscheck/docs__PLAN.md.state.json",
+  "round": 4,
+  "phase": "done",
+  "modifier_slot": "secondary",
+  "labels": {
+    "primary": "K3",
+    "secondary": "GPT-5.6 Sol"
+  },
+  "models": {
+    "primary": "kimi-code/k3",
+    "secondary": "chatgpt-local/gpt-5.6-sol"
+  },
+  "streak": 0,
+  "zero_diff_streak": 0,
+  "max_rounds": 10,
+  "streak_limit": 2,
+  "status": "pass",
+  "review_snapshot": null,
+  "verdicts": [
+    { "round": 1, "reviewer_slot": "secondary", "verdict": "FAIL", "fresh": true, "line": "结论: [FAIL]", "at": "2026-08-16T10:02:11.000Z" },
+    { "round": 2, "reviewer_slot": "secondary", "verdict": "FAIL", "fresh": true, "line": "结论: [FAIL]", "at": "2026-08-16T10:31:47.000Z" },
+    { "round": 3, "reviewer_slot": "primary", "verdict": "FAIL", "fresh": true, "line": "结论: [FAIL]", "at": "2026-08-16T11:05:22.000Z" },
+    { "round": 4, "reviewer_slot": "primary", "verdict": "PASS", "fresh": true, "line": "结论: [PASS]", "at": "2026-08-16T11:42:03.000Z" }
+  ],
+  "created_at": "2026-08-16T09:40:00.000Z",
+  "updated_at": "2026-08-16T11:42:05.000Z"
+}

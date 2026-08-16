@@ -3,7 +3,7 @@
 > **版本**：0.1（奠基稿）
 > **日期**：2026-08-08
 > **读者**：冷启动的新会话 / 新 Agent。读完本文即具备开工所需的全部上下文，无需翻阅原始会话。
-> **前置事实来源**：2026-08-08 在 某保密项目 仓库实跑 `doc-review-loop` skill 一整天的排障与运行记录，以及 Kimi Code 官方文档（plugins / hooks / config-files / env-vars / overrides，均于当日核对）。
+> **前置事实来源**：2026-08-08 在 某保密项目仓库实跑 `doc-review-loop` skill 一整天的排障与运行记录，以及 Kimi Code 官方文档（plugins / hooks / config-files / env-vars / overrides，均于当日核对）。
 
 ---
 
@@ -67,7 +67,7 @@ SKILL.md                 # 触发层文档
 5. **替代路由（已验证端到端可用）**：kimi CLI + `chatgpt-local` provider（CLIProxyAPI，`http://127.0.0.1:8317/v1`，未授权返回 401=存活），模型 `gpt-5.6-sol` 不变。
 6. **per-role thinking effort 控制**：
    - kimi provider：`KIMI_MODEL_THINKING_EFFORT=max` 环境变量可强制 wire effort（**仅对 kimi provider 生效**，官方 env-vars 文档原文确认）；
-   - openai provider（chatgpt-local）：上述变量无效，需用**隔离 `KIMI_CODE_HOME`**（独立 config.toml 设 `[thinking].effort = "xhigh"`）固定 effort，不污染全局配置。参考实现：某保密项目 仓库 `.review-loop/kimi-home/config.toml`（最小骨架：单个 provider + 单个 model + thinking 节 + `default_permission_mode = "yolo"`）。
+   - openai provider（chatgpt-local）：上述变量无效，需用**隔离 `KIMI_CODE_HOME`**（独立 config.toml 设 `[thinking].effort = "xhigh"`）固定 effort，不污染全局配置。参考实现：某保密项目仓库 `.review-loop/kimi-home/config.toml`（最小骨架：单个 provider + 单个 model + thinking 节 + `default_permission_mode = "yolo"`）。
 7. **K3 能力面**：`support_efforts = [low, high, max]`，默认 high；`gpt-5.6-sol` 支持到 `ultra`。
 
 ### 4.3 编排层
@@ -196,7 +196,7 @@ manifest 草案：
 
 ## 9. 当前运行实例快照（headless 版，2026-08-08 21:03）
 
-某保密项目 仓库正在用 headless 版审核迭代 两个迭代 四份文档，分支 `review-loop/<保密分支>`：
+某保密项目仓库正在用 headless 版审核相邻两个迭代 四份文档，分支 `review-loop/<保密分支>`：
 
 - ✅ `需求稿A.md` — **第 4 轮 PASS**（7H/11M → 4H/8M → 1M/4L → PASS，收敛轨迹健康）
 - 🔄 `计划稿A.md` — Round 1 审核中（20:42 起）
@@ -296,7 +296,7 @@ R8 修改者子代理（deepseek-flash）返回时声称"循环已到终态"—�
 
 **事件**：插件循环与 headless 循环在 某保密项目 **同一工作树、同一文档**上并发运行，双向污染。证据：
 
-1. 插件两循环（REQUIREMENTS/DEVELOPMENT_PLAN 迭代B）status=running，review_file 与 headless 同路径（`需求稿B.review.md`）——两边的新鲜度校验与结论行解析互相读对方的文件。
+1. 插件两循环（需求稿B/计划稿B）status=running，review_file 与 headless 同路径（`REQUIREMENTS_迭代B.review.md`）——两边的新鲜度校验与结论行解析互相读对方的文件。
 2. git log 已交织：`[crosscheck] 修订 (K3) - Round 1`（插件）叠在 `[Kimi K3 (max)] 修订 - Round 2`（headless）之上，同一分支 review-loop/<保密分支> 出现两套重复 Round 编号。
 3. headless 的 K3 战斗进程（全局 home 的 kimi -p）被插件 stop-guard 反复阻断，agents.log 中 8 处 crosscheck 字样，K3 已在推理"我是主会话中的修改者角色"——身份混淆，headless 基线输出可信度已受损。（GPT 侧用隔离 home，无插件，未受影响。）
 
@@ -305,7 +305,7 @@ R8 修改者子代理（deepseek-flash）返回时声称"循环已到终态"—�
 **处置（先记录后执行，本条目即记录）**：
 - ✅ 暂停插件两个循环（`pause --reason`），立即停止 stop-guard 对 headless K3 进程的阻断，插件侧可 resume 无损恢复；
 - ✅ headless 循环（PID 56071，GPT xhigh 审核在飞）不动——杀它会浪费已耗额度并产生孤儿进程；
-- ✅ 某保密项目 的 git 历史不回退（headless 正在该分支上提交，改写历史会造成二次伤害），待 headless 跑完由用户决定如何处理插件的混入提交 `<提交哈希>`；
+- ✅ 某保密项目 的 git 历史不回退（headless 正在该分支上提交，改写历史会造成二次伤害），待 headless 跑完由用户决定如何处理插件的混入提交 `<插件混入提交>`；
 - ✅ 插件源码侧 WIP（executors/run_role 三角色功能）隔离到 `feat/cli-executor` 分支，main 停在 4d96141；**生产跑期间冻结 managed 副本同步**。
 
 **教训（插件设计级）**：
@@ -324,7 +324,7 @@ R8 修改者子代理（deepseek-flash）返回时声称"循环已到终态"—�
 - 代码：master = `66febf5`（已验证：单测 12/12、hooks 四场景模拟通过、M2 冒烟 4 轮 PASS）；未验证的三角色 CLI 执行器 WIP 在 `feat/cli-executor`（`f7369ff`，含 `executors` 状态字段 + `scripts/run_role.mjs`）。
 - 已安装副本（`~/.kimi-code/plugins/managed/crosscheck/`）= master 内容，**同步冻结中**；恢复开发后先 diff 再同步。
 - 某保密项目 两个插件循环已 pause（reason 写明撞车原委），等 headless 跑完决定：在其干净分支上 resume 或 `init --force` 重开。
-- 某保密项目 插件混入提交 `<提交哈希>` 待用户处置（revert 或接受）。
+- 某保密项目 插件混入提交 `<插件混入提交>` 待用户处置（revert 或接受）。
 
 ### 恢复时的待决策项（按序）
 
@@ -340,7 +340,7 @@ R8 修改者子代理（deepseek-flash）返回时声称"循环已到终态"—�
 
 ### §12 追记（2026-08-16）：M3 已在生产仓库完成，暂停解除
 
-暂停期间（08-09 撞车处置后），插件循环在 某保密项目 恢复并跑完全部四份 两个迭代 文档：K3↔GPT-5.6 Sol 双模型，REQUIREMENTS/DEVELOPMENT_PLAN 各 4 轮收敛 PASS（R1-R3 FAIL → R4 PASS，角色互换正常）；迭代A 两份各 1 轮 PASS（此前已经 headless 审过多轮，符合预期）。**M3 事实完成**，与 headless 基线的质量对比未做专项分析（可选后补）。本次发布准备：examples 换终态样本、manifest 0.2.0、marketplace.json、README 修正（安装命令原写成不存在的 `kimi /plugins` shell 形式；里程碑表更新）、SKILL 前置补 headless 活跃检测（§11 追记四教训落地）。遗留不阻塞项：SessionStart stdout 注入实证、compaction 恢复实测、三角色 CLI 执行器（feat/cli-executor，未纳入本版）。
+暂停期间（08-09 撞车处置后），插件循环在某保密项目恢复并跑完全部四份文档：K3↔GPT-5.6 Sol 双模型，需求稿B/计划稿B 各 4 轮收敛 PASS（R1-R3 FAIL → R4 PASS，角色互换正常）；迭代A 两份各 1 轮 PASS（此前已经 headless 审过多轮，符合预期）。**M3 事实完成**，与 headless 基线的质量对比未做专项分析（可选后补）。本次发布准备：examples 换终态样本、manifest 0.2.0、marketplace.json、README 修正（安装命令原写成不存在的 `kimi /plugins` shell 形式；里程碑表更新）、SKILL 前置补 headless 活跃检测（§11 追记四教训落地）。遗留不阻塞项：SessionStart stdout 注入实证、compaction 恢复实测、三角色 CLI 执行器（feat/cli-executor，未纳入本版）。
 
 ### §12 追记二（2026-08-16）：kimi-code 0.36 子代理模型池——三角色拓扑原生解锁
 

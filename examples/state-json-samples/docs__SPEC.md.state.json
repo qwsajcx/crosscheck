@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "doc": "docs/SPEC.md",
+  "review_file": "docs/SPEC.review.md",
+  "repo": "/path/to/repo",
+  "state_file": ".crosscheck/docs__SPEC.md.state.json",
+  "round": 10,
+  "phase": "done",
+  "modifier_slot": "primary",
+  "labels": {
+    "primary": "K3",
+    "secondary": "GPT-5.6 Sol"
+  },
+  "models": {
+    "primary": "kimi-code/k3",
+    "secondary": "chatgpt-local/gpt-5.6-sol"
+  },
+  "streak": 0,
+  "zero_diff_streak": 0,
+  "max_rounds": 10,
+  "streak_limit": 2,
+  "status": "max-rounds",
+  "review_snapshot": null,
+  "verdicts": [
+    { "round": 9, "reviewer_slot": "secondary", "verdict": "FAIL", "fresh": true, "line": "结论: [FAIL]", "at": "2026-08-16T15:22:40.000Z" },
+    { "round": 10, "reviewer_slot": "primary", "verdict": "FAIL", "fresh": true, "line": "结论: [FAIL]", "at": "2026-08-16T16:01:12.000Z" }
+  ],
+  "note": "样例：达到最大轮次。verdicts 仅示意末两轮，实际会累积全部 10 条。max-rounds 需人工查看最后一版审核意见，不要自动重跑",
+  "created_at": "2026-08-16T09:40:00.000Z",
+  "updated_at": "2026-08-16T16:01:15.000Z"
+}
