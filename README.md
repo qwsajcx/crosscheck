@@ -1,8 +1,15 @@
-# Crosscheck — TUI 内双模型文档交叉审核循环
+# Crosscheck — 双模型文档交叉审核循环（Kimi Code 插件）
 
-Kimi Code 插件：在 **TUI 会话内部**驱动「双模型文档交叉审核循环」。修改者子代理修订文档、审核者子代理撰写审核意见文件，循环往复直到审核结论为 `[PASS]`，或达到最大轮次、判定无进展。
+让两个不同的 AI 模型在你的 TUI 会话里互审一份文档，直到达标为止。循环逻辑：
 
-与传统 headless 编排（tmux + 进程级脚本）的本质区别：**整个循环像普通对话一样在 TUI 里可见、可插话、可中途转向**——每一轮子代理的工作摘要直接出现在会话中，用户随时可以叫停、跳过某条意见或换方向。
+1. **修改者**（模型 A）修订目标文档；
+2. **审核者**（模型 B）通读全文，把分级意见（HIGH/MEDIUM/LOW）写入 `<文档名>.review.md`，最后一行落结论：`结论: [PASS]` 或 `结论: [FAIL]`；
+3. `FAIL` → 回到第 1 步继续改；`PASS` → 循环结束。同一模型最多连续修改 2 轮，随后 A/B 角色互换，防止自说自话；达到最大轮次（默认 10）或连续两轮零改动也会安全停止；
+4. 每一轮自动 git 提交，且只提交文档与审核文件这两个路径。
+
+整个过程像普通对话一样在会话里可见：每轮谁改了什么、审核给了几条意见、结论如何，都直接出现在对话中——你随时可以插话："这条意见不用改"、"先跳过这份文档"、"停下来"。
+
+适合的场景：需求稿、方案文档、设计文档在交付前，让两个不同模型互相挑刺、迭代收敛，而不是同一个模型自写自夸。
 
 ## 工作原理
 
@@ -14,9 +21,9 @@ Kimi Code 插件：在 **TUI 会话内部**驱动「双模型文档交叉审核�
 │ 主 Agent = 编排器（按 skills/crosscheck/SKILL.md 执行）     │
 │  1. state.mjs init → 状态文件                             │
 │  2. while 未到终态：                                      │
-│       Agent(修改者提示词, model=当前修改者槽位)             │
+│       Agent(修改者提示词, model=状态文件记录的 A 模型)       │
 │       state.mjs record-modify                            │
-│       Agent(审核者提示词, model=另一槽位)                  │
+│       Agent(审核者提示词, model=状态文件记录的 B 模型)       │
 │       state.mjs record-review（新鲜度校验 + 结论行解析）    │
 │  3. 每步结束向用户简报（可插话）                            │
 └─────────────────────────────────────────────────────────┘
@@ -47,7 +54,7 @@ Stop hook（hooks/stop-guard.mjs）读状态文件：
 
 也可以用本仓库自带的 marketplace 源：在 TUI 中 `/plugins marketplace /path/to/crosscheck/marketplace.json`，然后从 Custom 页安装。
 
-安装后运行于 `$KIMI_CODE_HOME/plugins/managed/crosscheck/` 的副本（改源码要重装才生效）；per-user 全局生效。注意：插件 hooks 是全局的——任何 cwd 树下存在 running 状态 `.crosscheck/` 的仓库，其内所有 kimi 会话（含 headless `kimi -p` 进程）的回合结束都会被 stop-guard 评估。
+安装后运行于 `$KIMI_CODE_HOME/plugins/managed/crosscheck/` 的副本（改源码要重装才生效）；per-user 全局生效。注意：插件 hooks 是全局的——任何 cwd 树下存在 running 状态 `.crosscheck/` 的仓库，其内所有 kimi 会话（含 `kimi -p` 非交互进程）的回合结束都会被 stop-guard 评估。
 
 ## 使用
 
@@ -58,7 +65,7 @@ Stop hook（hooks/stop-guard.mjs）读状态文件：
 /crosscheck:status                      # 查看当前仓库的循环状态
 ```
 
-也可以用自然语言触发（"crosscheck 审核一下这份文档"）。启动时按 skill 前置检查清单逐项确认：目标在 git 仓库内、权限模式为 yolo/auto、**扫描当前模型配置并与用户交互确认 A/B 审核模型**——若所选别名不在池中，插件会（经用户流程授权）备份并更新 `[secondary_model]` 配置、提醒 `/reload` 或新开会话后再开跑；同时检测既有循环与 headless 并发。
+也可以用自然语言触发（"crosscheck 审核一下这份文档"）。启动时按 skill 前置检查清单逐项确认：目标在 git 仓库内、权限模式为 yolo/auto、**扫描当前模型配置并与用户交互确认 A/B 审核模型**——若所选别名不在池中，插件会（经用户流程授权）备份并更新 `[secondary_model]` 配置、提醒 `/reload` 或新开会话后再开跑；同时检测既有循环与旧版脚本并发。
 
 推荐配置（0.36+ 子代理模型池，kimi-code ≥ 0.36.0）：会话开便宜模型做编排（如 deepseek），池里放两个战士，循环内按别名精确派发：
 
@@ -115,7 +122,7 @@ crosscheck/
 │   ├── modifier.md           # 修改者提示词模板（含越权防护条目）
 │   └── reviewer.md           # 审核者提示词模板（结论行契约在此定义）
 ├── legacy/
-│   └── review_loop.py        # headless 版编排器（tmux 黑盒，长期无人值守场景）
+│   └── review_loop.py        # 旧版独立编排脚本（tmux 后台运行，长期无人值守场景）
 ├── tests/                    # 状态机单测 + fixtures（冒烟文档）
 ├── examples/                 # 状态文件样例
 └── docs/
@@ -137,7 +144,7 @@ crosscheck/
 已知边界与取舍：
 - kimi-code < 0.36 时子代理模型仅 primary/secondary 两个符号槽；0.36+ 的子代理模型池解除该限制（`Agent model:` 可传任意池别名），三角色拓扑（廉价模型编排 + 两个指定模型互审）已原生可行。早期为此准备的 CLI 执行器方案（`feat/cli-executor` 分支）因此作废，不再合并。
 - 单模型自审收敛质量差（实测见 `docs/DESIGN_BRIEF.md` §11），仅适合廉价机制冒烟。
-- **禁止**与 headless 版（`legacy/review_loop.py`）在同一仓库同一文档上并发——会互相污染（2026-08-09 撞车实录，简报 §11 追记四）。
+- **禁止**与旧版脚本 `legacy/review_loop.py` 在同一仓库同一文档上并发——两边会读写同一个审核文件、交叉提交，互相污染（2026-08-09 撞车实录，简报 §11 追记四）。
 
 ## 测试
 
@@ -147,6 +154,6 @@ node tests/crosscheck_state.test.mjs
 
 ## 相关文档
 
-- `docs/DESIGN_BRIEF.md` — 完整设计简报：动机、headless 版实测教训、架构决策、里程碑与运行记录（冷启动恢复必读）
+- `docs/DESIGN_BRIEF.md` — 完整设计简报：动机、实测教训、架构决策、里程碑与运行记录（冷启动恢复必读）
 - `skills/crosscheck/SKILL.md` — 编排器运行时指令
-- `legacy/review_loop.py` — headless（tmux）模式的独立入口，与 in-TUI 版共享提示词契约与状态格式
+- `legacy/review_loop.py` — 旧版独立入口（tmux 后台运行，插件之外单独使用），与本插件共享提示词契约与状态格式
