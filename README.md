@@ -58,7 +58,7 @@ Stop hook（hooks/stop-guard.mjs）读状态文件：
 /crosscheck:status                      # 查看当前仓库的循环状态
 ```
 
-也可以用自然语言触发（"crosscheck 审核一下这份文档"）。启动时按 skill 前置检查清单逐项确认：目标在 git 仓库内、权限模式为 yolo/auto、**用 AskUserQuestion 与用户确认 A/B 角色各用哪个模型及谁先修改**、检测既有循环。
+也可以用自然语言触发（"crosscheck 审核一下这份文档"）。启动时按 skill 前置检查清单逐项确认：目标在 git 仓库内、权限模式为 yolo/auto、**扫描当前模型配置并与用户交互确认 A/B 审核模型**——若所选别名不在池中，插件会（经用户流程授权）备份并更新 `[secondary_model]` 配置、提醒 `/reload` 或新开会话后再开跑；同时检测既有循环与 headless 并发。
 
 推荐配置（0.36+ 子代理模型池，kimi-code ≥ 0.36.0）：会话开便宜模型做编排（如 deepseek），池里放两个战士，循环内按别名精确派发：
 

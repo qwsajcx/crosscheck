@@ -20,14 +20,18 @@ description: TUI 内双模型文档交叉审核循环。修改者子代理改文
 
 1. **目标文档在 git 仓库内**（`git rev-parse --show-toplevel` 能出根目录）。不在则报错停下。
 2. **权限模式**：循环期间需要 `yolo` 或 `auto`，否则每步都要用户确认。若不是，提示用户 `/permission-mode` 切换。
-3. **与用户确认 A/B 角色各用哪个模型（必须问，不要自作主张）**：
-   - 先读 `~/.kimi-code/config.toml` 的 `[secondary_model]` 节（0.36+ 为子代理模型池）：列出可派发项——`[secondary_model.models]` 池里的每个别名 + 恒可用的 `"primary"`（当前会话模型）。
-   - 然后用 AskUserQuestion 向用户确认本次循环的角色分配，一次问清两件事：
-     - **A/B 各用哪个派发模型**：从池别名与 `"primary"` 中选两个（可以任意组合，不再受两个槽位限制）。若想要的模型不在池里，指引用户在 `[secondary_model.models]` 加一行别名（或 `/secondary-model` 调整），再继续——**插件不能也不应替用户改全局配置**。
-     - **谁先改谁先审**：默认 A=primary 先修改、B=secondary 先审核；用户可选反向（init 用 `--modifier-slot secondary`）。同一模型同时扮演 A 和 B 时明确警告"单模型自审收敛质量差"（实测见简报 §11），用户坚持才继续。
-   - 把用户确认的两个**派发别名**通过 `--model-primary` / `--model-secondary` 写进状态文件（`"primary"` 就填 primary）；显示名可另用 `--label-primary` / `--label-secondary` 指定（默认取别名）。
-   - effort 说明：池别名派发不继承调用方 effort，按"全局 `[thinking].effort` → 该模型 `default_effort`"解析；若用户设了全局 effort 则池中所有模型同档。要给两个战士配不同档位（如 K3 max / GPT xhigh），需去掉全局 `[thinking].effort` 并改用 `[models."<别名>".overrides] default_effort` 分别钉档——提醒用户，不代办。
-   - 例外：当前是 auto 权限模式（不能提问）时，按池的 default_model 与 primary 组合继续，并在第一条进展消息里显式声明实际使用的 A/B 模型与角色方向。
+3. **扫描配置并与用户交互确认审核模型（必须做，不要自作主张）**：
+   - **扫描** `~/.kimi-code/config.toml` 并整理出可派发清单：当前会话模型（恒可用别名 `"primary"`）、`[secondary_model]` 的 `default_model` 与 `[secondary_model.models]` 池内容、是否有 `force = true`、全局 `[thinking].effort`、`[models]` 里已登记但尚未入池的别名（候选补充）。
+   - **用 AskUserQuestion 一次问清**：
+     - **A（修改者）/B（审核者）各用哪个模型**：选项 = 池别名 + `"primary"` + 已登记未入池的别名（标注"需加入池"）。同一模型同扮 A/B 时警告"单模型自审收敛质量差"（简报 §11），用户坚持才继续。
+     - **谁先改谁先审**：默认 A=primary 先修改、B=secondary 先审核（init `--modifier-slot` 控制）。
+   - **若所选模型都已可派发（在池或为 primary）**：直接进入启动步骤，`--model-primary/--model-secondary` 落用户确认的别名。
+   - **若需要改配置**（别名未入池 / `force = true` 挡住了选择 / 用户要求 effort 钉档）——**用户已在流程目标中授权插件改配置**，按序执行：
+     1. 备份：`cp ~/.kimi-code/config.toml ~/.kimi-code/config.toml.bak-<YYYYMMDD-HHMM>`；
+     2. 精确文本编辑（只动 `[secondary_model]` 与相关 `[models."<别名>".overrides]` 节，其余原样）：把别名加进 `[secondary_model.models]` 并写一句选用描述（如 `"crosscheck 审核者：四维审查"`）；有 `force = true` 时先向用户确认再移除；effort 钉档写到对应别名的 overrides（注意：全局 `[thinking].effort` 存在时池中模型同档，分档需用户确认后一并删除该行）；
+     3. 把改动内容展示给用户，**提醒 `/reload`（或新开会话）**——池别名要等 reload 后才进入 Agent 工具的 model 列表；
+     4. 就此停下：**此时还未 init，无任何副作用**。告诉用户"reload 后说继续 crosscheck 即可"；reload 后用已确认的别名直接 init，不要重复提问。
+   - 例外：auto 权限模式（不能提问）时，按池 `default_model` 与 `"primary"` 组合继续，并在第一条进展消息里显式声明实际 A/B 与方向；**auto 模式下也不改全局配置**。
 4. **工作区脏文件**：`git status --porcelain` 有无关改动时提醒一句：循环提交只含被管理的两个文件，其余原样保留。
 5. **未完成循环检测**：`node state.mjs verdict --repo <仓库根>`，若已有 running/paused 的同名文档循环，问用户续跑（resume）还是重置（init --force），不要默默覆盖。
 6. **headless 并发检测（2026-08-09 撞车教训，必须做）**：检查目标仓库是否存在活跃的 headless 审核——`ls -t <仓库根>/.review-loop/2*/status.json | head -1` 读最新 status.json，`state=running` 且对应 orchestrator.pid 进程存活（`kill -0 <pid>`）则为活跃。**同一文档上 headless 与插件并发会双向污染**（review 文件串写、提交交织、stop-guard 阻断 headless 进程），发现活跃 headless 循环时：不同文档→提醒用户后可继续；同文档→拒绝启动，建议等 headless 完成或换干净分支/worktree。

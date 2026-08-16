@@ -353,3 +353,7 @@ R8 修改者子代理（deepseek-flash）返回时声称"循环已到终态"—�
 **effort 要点（官方语义）**：池别名不继承调用方 effort，按"全局 `[thinking].effort` → 模型 `default_effort`"解析；**全局 effort 存在时所有池模型同档**——要 K3 max / GPT xhigh 分档，须删全局 `[thinking].effort` 并用 `[models."<别名>".overrides] default_effort` 分别钉档（用户配置，插件不代办）。
 
 **顺带**：0.35.0 "Fix coder subagents spawning further subagents by default" 平台级堵死了越权接管的嵌套派发路径（§11 追记三的攻击面减半；Bash 直调状态脚本仍可能，提示词禁令保留）。
+
+### §12 追记三（2026-08-16）：启动流程定稿——交互确认 + 授权改配置 + reload
+
+用户拍板的启动 UX：run 时**扫描 config.toml（池内容/default_model/force/全局 effort/未入池别名）→ AskUserQuestion 确认 A/B 模型与先后手 → 所选别名未入池（或有 force 挡路/需 effort 钉档）时，插件经用户流程授权备份并更新 `[secondary_model]`（`config.toml.bak-<时间戳>`），提醒 `/reload` 或新开会话后停下（未 init 无副作用），reload 后用已确认别名直接 init 不重复提问**。原"插件不改全局配置"条款按用户明确授权改写；auto 权限模式下不提问也不改配置，按 default_model+primary 兜底。已落入 SKILL 前置清单第 3 项与 run.md、README。
