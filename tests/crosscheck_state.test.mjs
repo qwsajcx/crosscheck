@@ -263,6 +263,25 @@ test("verdict and status commands summarize state", (t) => {
   assert.equal(s.loops[0].status, "pass");
 });
 
+test("init stores dispatch model aliases (pool era), labels default to them", (t) => {
+  const { run, repo } = makeRepo(t);
+  const st = run("init", "--doc", "docs/A.md",
+    "--model-primary", "kimi-code/k3", "--model-secondary", "chatgpt-local/gpt-5.6-sol");
+  assert.deepEqual(st.models, { primary: "kimi-code/k3", secondary: "chatgpt-local/gpt-5.6-sol" });
+  // labels fall back to the dispatch alias for display/commit messages
+  assert.deepEqual(st.labels, { primary: "kimi-code/k3", secondary: "chatgpt-local/gpt-5.6-sol" });
+
+  const v = run("verdict", "--repo", repo);
+  assert.deepEqual(v.loops[0].models, { primary: "kimi-code/k3", secondary: "chatgpt-local/gpt-5.6-sol" });
+
+  // explicit label still wins over the alias fallback
+  const st2 = run("init", "--doc", "docs/A.md", "--force",
+    "--model-secondary", "chatgpt-local/gpt-5.6-sol", "--label-secondary", "GPT-5.6 Sol");
+  assert.equal(st2.models.secondary, "chatgpt-local/gpt-5.6-sol");
+  assert.equal(st2.labels.secondary, "GPT-5.6 Sol");
+  assert.equal(st2.models.primary, "primary"); // untouched slot keeps legacy symbol
+});
+
 test("init stores model labels and commit messages use them", (t) => {
   const { run, touchDoc, writeReview, git, repo } = makeRepo(t);
   const st = run("init", "--doc", "docs/A.md",

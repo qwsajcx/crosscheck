@@ -14,6 +14,7 @@
  *                    [--max-rounds N] [--streak-limit N]
  *                    [--modifier-slot primary|secondary] [--force]
  *                    [--label-primary "K3"] [--label-secondary "gpt-5.6-sol"]
+ *                    [--model-primary <pool-alias|primary>] [--model-secondary <pool-alias|primary>]
  *   status         --doc <path> | --repo <path>
  *   record-modify  --doc <path>
  *   record-review  --doc <path> (--before | --after)
@@ -207,6 +208,17 @@ function cmdInit(args) {
   const labels = {};
   if (args["label-primary"]) labels.primary = args["label-primary"];
   if (args["label-secondary"]) labels.secondary = args["label-secondary"];
+  // Optional dispatch model per slot (0.36+ subagent model pool era): the
+  // exact value the orchestrator passes as `model:` when spawning that slot's
+  // sub-agent — a pool alias (e.g. "chatgpt-local/gpt-5.6-sol") or the symbol
+  // "primary"/"secondary" (legacy two-slot behavior, the default).
+  const models = {
+    primary: args["model-primary"] || "primary",
+    secondary: args["model-secondary"] || "secondary",
+  };
+  // Display labels default to the dispatch alias when not given explicitly.
+  if (!labels.primary) labels.primary = models.primary;
+  if (!labels.secondary) labels.secondary = models.secondary;
   const st = {
     version: 1,
     doc: relDoc,
@@ -217,6 +229,7 @@ function cmdInit(args) {
     phase: "modify", // modify | review | done
     modifier_slot: modifierSlot,
     labels,
+    models,
     streak: 0,
     zero_diff_streak: 0,
     max_rounds: parseInt(args["max-rounds"] || "10", 10),
@@ -354,6 +367,7 @@ function cmdVerdict(args) {
     modifier_slot: st.modifier_slot,
     modifier: labelOf(st, st.modifier_slot),
     labels: st.labels || {},
+    models: st.models || { primary: "primary", secondary: "secondary" },
     note: st.note || null,
     last_verdict: st.verdicts.length ? st.verdicts[st.verdicts.length - 1] : null,
   });

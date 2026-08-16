@@ -341,3 +341,15 @@ R8 修改者子代理（deepseek-flash）返回时声称"循环已到终态"—�
 ### §12 追记（2026-08-16）：M3 已在生产仓库完成，暂停解除
 
 暂停期间（08-09 撞车处置后），插件循环在 某保密项目 恢复并跑完全部四份 两个迭代 文档：K3↔GPT-5.6 Sol 双模型，REQUIREMENTS/DEVELOPMENT_PLAN 各 4 轮收敛 PASS（R1-R3 FAIL → R4 PASS，角色互换正常）；迭代A 两份各 1 轮 PASS（此前已经 headless 审过多轮，符合预期）。**M3 事实完成**，与 headless 基线的质量对比未做专项分析（可选后补）。本次发布准备：examples 换终态样本、manifest 0.2.0、marketplace.json、README 修正（安装命令原写成不存在的 `kimi /plugins` shell 形式；里程碑表更新）、SKILL 前置补 headless 活跃检测（§11 追记四教训落地）。遗留不阻塞项：SessionStart stdout 注入实证、compaction 恢复实测、三角色 CLI 执行器（feat/cli-executor，未纳入本版）。
+
+### §12 追记二（2026-08-16）：kimi-code 0.36 子代理模型池——三角色拓扑原生解锁
+
+官方 0.36.0（2026-08-13）把实验性 `[secondary_model]` 升级为**子代理模型池**：`[secondary_model.models]` 表登记多个别名（值为给主 Agent 看的选用描述），`Agent`/`AgentSwarm` 的 `model` 参数**可传任意池别名**（或恒可用的 `"primary"`）；`force = true` 可钉死单一默认（本插件不需要）。老 recipe 键 `model = "..."` 兼容为单入口池。本机已是 0.36.1。
+
+**对插件的意义**：§12 待决策项 1（三角色拓扑）以原生方式解决——廉价模型开会话做编排，池里放两个战士，循环内按别名精确派发；`feat/cli-executor` 的 CLI 执行器方案**作废**（分支保留存档，不合并）。
+
+**插件侧适配（0.3.0）**：`init` 新增 `--model-primary/--model-secondary` 把派发别名落进状态文件（label 默认取别名；老配置缺省为符号 `primary`/`secondary`，完全向后兼容）；SKILL 前置清单第 3 项改为"读池 → 与用户确认 A/B 各用哪个池别名"，循环体按 `models[槽位]` 派发。单测 13/13。
+
+**effort 要点（官方语义）**：池别名不继承调用方 effort，按"全局 `[thinking].effort` → 模型 `default_effort`"解析；**全局 effort 存在时所有池模型同档**——要 K3 max / GPT xhigh 分档，须删全局 `[thinking].effort` 并用 `[models."<别名>".overrides] default_effort` 分别钉档（用户配置，插件不代办）。
+
+**顺带**：0.35.0 "Fix coder subagents spawning further subagents by default" 平台级堵死了越权接管的嵌套派发路径（§11 追记三的攻击面减半；Bash 直调状态脚本仍可能，提示词禁令保留）。

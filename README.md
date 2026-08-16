@@ -29,7 +29,7 @@ Stop hook（hooks/stop-guard.mjs）读状态文件：
 
 核心设计：
 
-- **双模型对抗**：修改者/审核者由 `Agent` 子代理扮演，分别绑定 primary / secondary 两个模型槽位。同一模型连续修改 `--streak-limit`（默认 2）轮后角色互换，防止单模型自说自话。
+- **双模型对抗**：修改者/审核者由 `Agent` 子代理扮演，派发模型按状态文件记录精确指定（0.36+ 模型池任意别名；老版本为 primary/secondary 两槽）。同一模型连续修改 `--streak-limit`（默认 2）轮后角色互换，防止单模型自说自话。
 - **确定性状态机**：循环状态全部落盘到 `<仓库>/.crosscheck/*.state.json`，由 `scripts/crosscheck_state.mjs` 裁决轮次、角色、连胜、无进展判定与审核新鲜度——多轮循环下主 Agent 上下文可能被压缩，**状态文件是唯一事实来源**。
 - **结论行严格契约**：审核意见文件最后一行必须是 `结论: [PASS]` 或 `结论: [FAIL]`，正文不得出现标记；审核前后对 review 文件做 (mtime, size) 快照，未刷新则忽略结论，防止读到上一轮残留。
 - **Stop hook 兜底**：未达终态时阻断收工；hook 消息刻意「去指令化」（只读提示 + 固定句式），避免廉价模型把阻断消息当成命令越权接管编排（2026-08-08 实测两次真实发生）。
@@ -60,7 +60,17 @@ Stop hook（hooks/stop-guard.mjs）读状态文件：
 
 也可以用自然语言触发（"crosscheck 审核一下这份文档"）。启动时按 skill 前置检查清单逐项确认：目标在 git 仓库内、权限模式为 yolo/auto、**用 AskUserQuestion 与用户确认 A/B 角色各用哪个模型及谁先修改**、检测既有循环。
 
-推荐配置：primary = Kimi K3（effort max）、secondary = `chatgpt-local/gpt-5.6-sol`（xhigh）。单模型自审收敛质量差（实测见 `docs/DESIGN_BRIEF.md` §11），仅适合廉价机制冒烟。
+推荐配置（0.36+ 子代理模型池，kimi-code ≥ 0.36.0）：会话开便宜模型做编排（如 deepseek），池里放两个战士，循环内按别名精确派发：
+
+```toml
+[secondary_model]
+default_model = "kimi-code/k3"
+[secondary_model.models]
+"kimi-code/k3" = "深度修改者：复杂推理与文档重写。"
+"chatgpt-local/gpt-5.6-sol" = "严苛审核者：正确性/一致性/完整性/可执行性四维度审查。"
+```
+
+注意 effort：池别名按"全局 `[thinking].effort` → 模型 `default_effort`"解析——要给战士配不同档位（如 K3 max / GPT xhigh），去掉全局 effort 并用 `[models."<别名>".overrides] default_effort` 分别钉档。单模型自审收敛质量差（实测见 `docs/DESIGN_BRIEF.md` §11），仅适合廉价机制冒烟。
 
 ### 状态机 CLI
 
@@ -69,6 +79,7 @@ node scripts/crosscheck_state.mjs <子命令> [选项]
 
 init           --doc <path> [--repo <path>] [--max-rounds 10] [--streak-limit 2]
                [--modifier-slot primary|secondary]
+               [--model-primary <池别名|primary>] [--model-secondary <池别名|primary>]
                [--label-primary <名>] [--label-secondary <名>] [--force]
 status         --doc <path>
 record-modify  --doc <path>
@@ -119,10 +130,12 @@ crosscheck/
 | M2 | 单模型冒烟（自改自审 + Stop hook 循环 + 越权防护定稿） | ✅ 4 轮 PASS |
 | M3 | 双模型接线（K3 ↔ GPT-5.6 Sol 交叉审核真实文档） | ✅ 某保密项目 四份 两个迭代 文档全部 PASS（各 4 轮收敛，轨迹 FAIL×3 → PASS，状态样本见 `examples/`） |
 | M4 | 恢复与异常路径（pause/abort/resume 实证、429 策略、撞车处置） | ✅ 主体完成；SessionStart stdout 注入未实证（观察型，不影响主流程） |
-| M5 | 打包发布（README、marketplace JSON、干净重装验证） | ⏳ 进行中 |
+| M5 | 打包发布（README、marketplace JSON、干净重装验证） | ✅ 0.2.0 已打 tag 并推送 GitHub/Gitee（TUI 侧重装验证随用随做） |
+
+后续：0.3.0 适配 kimi-code 0.36 子代理模型池（`--model-primary/--model-secondary` 派发别名落入状态文件，循环内按别名派发；三角色拓扑原生可行）。
 
 已知边界与取舍：
-- 子代理模型仅 primary/secondary 两个符号槽（官方约束）；三角色拓扑（廉价模型编排 + 两个指定模型互审）的 CLI 执行器方案在 `feat/cli-executor` 分支，未纳入本版。
+- kimi-code < 0.36 时子代理模型仅 primary/secondary 两个符号槽；0.36+ 的子代理模型池解除该限制（`Agent model:` 可传任意池别名），三角色拓扑（廉价模型编排 + 两个指定模型互审）已原生可行。早期为此准备的 CLI 执行器方案（`feat/cli-executor` 分支）因此作废，不再合并。
 - 单模型自审收敛质量差（实测见 `docs/DESIGN_BRIEF.md` §11），仅适合廉价机制冒烟。
 - **禁止**与 headless 版（`legacy/review_loop.py`）在同一仓库同一文档上并发——会互相污染（2026-08-09 撞车实录，简报 §11 追记四）。
 
