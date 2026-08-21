@@ -357,3 +357,12 @@ R8 修改者子代理（deepseek-flash）返回时声称"循环已到终态"—�
 ### §12 追记三（2026-08-16）：启动流程定稿——交互确认 + 授权改配置 + reload
 
 用户拍板的启动 UX：run 时**扫描 config.toml（池内容/default_model/force/全局 effort/未入池别名）→ AskUserQuestion 确认 A/B 模型与先后手 → 所选别名未入池（或有 force 挡路/需 effort 钉档）时，插件经用户流程授权备份并更新 `[secondary_model]`（`config.toml.bak-<时间戳>`），提醒 `/reload` 或新开会话后停下（未 init 无副作用），reload 后用已确认别名直接 init 不重复提问**。原"插件不改全局配置"条款按用户明确授权改写；auto 权限模式下不提问也不改配置，按 default_model+primary 兜底。已落入 SKILL 前置清单第 3 项与 run.md、README。
+
+### §12 追记四（2026-08-21）：池配置引导强化——setup_pool.mjs 与默认描述
+
+用户要求：启动引导部分改为脚本化配置池 + 默认"一句话提示词"（池条目描述）+ 已有则先确认。落地：
+
+- `scripts/setup_pool.mjs`：`add <别名> --role modifier|reviewer [--desc] [--overwrite] [--remove-force] [--dry-run]`，确定性写入 `[secondary_model.models]`（无节则建节并补 `default_model`，recipe 老键保留），自动备份 `config.toml.bak-<时间戳>`。退出码语义：3 = 已有不同描述需用户确认（未 `--overwrite` 不写）、4 = `force=true` 挡路。
+- 默认描述（脚本内置）：修改者="按审核意见逐条精准修订文档，保持原文风格结构，不为改而改"；审核者="正确性/一致性/完整性/可执行性四维严格审查，HIGH/MEDIUM/LOW 分级并落盘结论行"。
+- 测试：单测 8/8（新写池/入既有池/确认闸门/幂等/空描述填充/recipe 兼容/force 闸门/dry-run+备份）；隔离 home 冒烟 —— T1 负例（池别名未登记）启动即报池错误、T2 正例（脚本写入的配置）通过启动校验、失败推迟到 API 阶段。剩余未实测环节：reload 后 Agent 工具列出池别名并按别名派发（需真实模型，留待首次实跑）。
+- SKILL 前置第 3 项改为脚本写入 + 退出码闸门流程；README 前提条件节同步。

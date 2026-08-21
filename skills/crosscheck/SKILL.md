@@ -27,10 +27,12 @@ description: TUI 内双模型文档交叉审核循环。修改者子代理改文
      - **谁先改谁先审**：默认 A=primary 先修改、B=secondary 先审核（init `--modifier-slot` 控制）。
    - **若所选模型都已可派发（在池或为 primary）**：直接进入启动步骤，`--model-primary/--model-secondary` 落用户确认的别名。
    - **若需要改配置**（别名未入池 / `force = true` 挡住了选择 / 用户要求 effort 钉档）——**用户已在流程目标中授权插件改配置**，按序执行：
-     1. 备份：`cp ~/.kimi-code/config.toml ~/.kimi-code/config.toml.bak-<YYYYMMDD-HHMM>`；
-     2. 精确文本编辑（只动 `[secondary_model]` 与相关 `[models."<别名>".overrides]` 节，其余原样）：把别名加进 `[secondary_model.models]` 并写一句选用描述（如 `"crosscheck 审核者：四维审查"`）；有 `force = true` 时先向用户确认再移除；effort 钉档写到对应别名的 overrides（注意：全局 `[thinking].effort` 存在时池中模型同档，分档需用户确认后一并删除该行）；
-     3. 把改动内容展示给用户，**提醒 `/reload`（或新开会话）**——池别名要等 reload 后才进入 Agent 工具的 model 列表；
-     4. 就此停下：**此时还未 init，无任何副作用**。告诉用户"reload 后说继续 crosscheck 即可"；reload 后用已确认的别名直接 init，不要重复提问。
+     1. **用确定性脚本写入**，不要手改 TOML：
+        `node <插件根>/scripts/setup_pool.mjs add <别名> --role modifier|reviewer [--desc "自定义描述"] [--dry-run]`（脚本自动备份 `config.toml.bak-<时间戳>`）。池条目描述用脚本内置的 crosscheck 角色文案（`--role`），用户想自定义再 `--desc`。
+     2. **确认闸门（退出码语义）**：exit 3 = 池中已有该别名且描述不同——把现有描述与默认描述并排展示，AskUserQuestion 确认后才可加 `--overwrite` 重跑（用户选择保留则原样不动、直接用现有别名继续）；exit 4 = `force = true` 挡路——向用户说明并确认后加 `--remove-force` 重跑。
+     3. **effort 钉档**（`[models."<别名>".overrides] default_effort`）脚本不管，手工编辑：先 `cp config.toml config.toml.bak-<YYYYMMDD-HHMM>` 再精确改；注意全局 `[thinking].effort` 存在时池中模型同档，分档需用户确认后一并删除该行。
+     4. 把改动内容展示给用户，**提醒 `/reload`（或新开会话）**——池别名要等 reload 后才进入 Agent 工具的 model 列表。
+     5. 就此停下：**此时还未 init，无任何副作用**。告诉用户"reload 后说继续 crosscheck 即可"；reload 后用已确认的别名直接 init，不要重复提问。
    - 例外：auto 权限模式（不能提问）时，按池 `default_model` 与 `"primary"` 组合继续，并在第一条进展消息里显式声明实际 A/B 与方向；**auto 模式下也不改全局配置**。
 4. **工作区脏文件**：`git status --porcelain` 有无关改动时提醒一句：循环提交只含被管理的两个文件，其余原样保留。
 5. **未完成循环检测**：`node state.mjs verdict --repo <仓库根>`，若已有 running/paused 的同名文档循环，问用户续跑（resume）还是重置（init --force），不要默默覆盖。
