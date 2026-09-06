@@ -17,8 +17,8 @@
 
 | 条件 | 说明 | 检查方法 |
 |---|---|---|
-| Kimi Code CLI ≥ 0.36.0 | 子代理模型池（按别名派发子代理）从 0.36 开始；更老版本只能用 primary/secondary 两个固定槽位（功能降级） | `kimi --version` |
-| 开启 secondary-model 实验开关 | 子代理模型选择是实验特性，不开则子代理永远跟随主模型 | `export KIMI_CODE_EXPERIMENTAL_SECONDARY_MODEL=1`（建议写进 shell rc） |
+| Kimi Code CLI ≥ 0.36.0 | 子代理模型池（按别名派发子代理）从 0.36 开始；**0.40 起该特性已转正，无需实验开关**（0.36–0.39 需 `export KIMI_CODE_EXPERIMENTAL_SECONDARY_MODEL=1`）；更老版本只能用 primary/secondary 两个固定槽位（功能降级） | `kimi --version` |
+| secondary-model 实验开关（仅 0.36–0.39 需要） | 0.40 起该特性已转正，无需任何开关；老版本不开则子代理永远跟随主模型 | 0.36–0.39：`export KIMI_CODE_EXPERIMENTAL_SECONDARY_MODEL=1` |
 | Node.js ≥ 18（建议 22） | 插件 hooks 与状态脚本的运行时 | `node --version` |
 | 目标文档在 git 仓库内 | 循环逐轮自动提交 | `git rev-parse --show-toplevel` |
 | 权限模式 yolo 或 auto | 否则每轮子代理和写文件都要人工确认 | 会话内 `/permission-mode` 切换 |
