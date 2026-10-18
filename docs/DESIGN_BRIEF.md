@@ -396,3 +396,14 @@ tower 是官方**通用**多代理编排（ lead 协调 + 多 worker + 分支隔
 2. SKILL 循环体评估 WaitFor 替代被动阻断（需实测，记 M4 尾巴）；
 3. 跟踪 tower 转稳定与文档化，届时复审"worker 化"可行性；
 4. 评估向 curated marketplace 投稿（0.40 web 插件面板通道）。
+
+### §13 追记（2026-10-18）：2.x 时代跟进与最佳实践落档
+
+生态变化（0.42→2.2.0）：
+- 子代理模型池 0.42 起**恒开**，2.x 移除实验开关（README 前提第三次更新）；权限模式更名（yolo→必要时询问 / auto→完全自动），SKILL/README 已同步。
+- tower 仍为实验特性（web 优先，worktree 编排，子代理继承主会话历史，2.2 起运行中发消息即中断转向）；官方速查表确认其定位为"多 Agent worktree 编排"。
+- WaitFor 最长 90 秒（whats-new 页确认）——长审核（20-46min）需循环多次调用，仍优于结束回合被 stop-guard 拍醒；SKILL 集成待实测（M4 尾巴保留）。
+- NotifyUser 进展更新（实验、opt-in）可替代"每阶段简报"约定，待转正后评估。
+- K2.8 Preview 已接管 kimi-for-coding（thinking on 时）；K3 正式开源发布（Moderato+，1M 需 Allegretto+）。
+- 新增 `docs/BEST_PRACTICES.md`：三层模型分层、swarm/tower/crosscheck 选型矩阵、交叉审核流水线位置、tower 实验期细则、成本配比——本项目的对外方法论出口。
+- 兼容性复查：2.1.1 本机单测 21/21 通过；hooks 契约（Stop/SessionStart）在 0.36→2.2 无破坏性变更。

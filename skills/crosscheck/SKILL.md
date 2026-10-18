@@ -19,7 +19,7 @@ description: TUI 内双模型文档交叉审核循环。修改者子代理改文
 ## 前置检查清单（启动前逐项过）
 
 1. **目标文档在 git 仓库内**（`git rev-parse --show-toplevel` 能出根目录）。不在则报错停下。
-2. **权限模式**：循环期间需要 `yolo` 或 `auto`，否则每步都要用户确认。若不是，提示用户 `/permission-mode` 切换。
+2. **权限模式**：循环期间需要"必要时询问"（旧名 yolo）或"完全自动"（旧名 auto），否则每步都要用户确认。若不是，提示用户 `/permission-mode` 切换。
 3. **扫描配置并与用户交互确认审核模型（必须做，不要自作主张）**：
    - **扫描** `~/.kimi-code/config.toml` 并整理出可派发清单：当前会话模型（恒可用别名 `"primary"`）、`[secondary_model]` 的 `default_model` 与 `[secondary_model.models]` 池内容、是否有 `force = true`、全局 `[thinking].effort`、`[models]` 里已登记但尚未入池的别名（候选补充）。
    - **用 AskUserQuestion 一次问清**：

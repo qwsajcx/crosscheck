@@ -17,11 +17,11 @@
 
 | 条件 | 说明 | 检查方法 |
 |---|---|---|
-| Kimi Code CLI ≥ 0.36.0 | 子代理模型池（按别名派发子代理）从 0.36 开始；**0.40 起该特性已转正，无需实验开关**（0.36–0.39 需 `export KIMI_CODE_EXPERIMENTAL_SECONDARY_MODEL=1`）；更老版本只能用 primary/secondary 两个固定槽位（功能降级） | `kimi --version` |
-| secondary-model 实验开关（仅 0.36–0.39 需要） | 0.40 起该特性已转正，无需任何开关；老版本不开则子代理永远跟随主模型 | 0.36–0.39：`export KIMI_CODE_EXPERIMENTAL_SECONDARY_MODEL=1` |
+| Kimi Code CLI ≥ 0.42（建议 2.x） | 子代理模型池（按别名派发子代理）0.36 引入、0.42 起**恒开且实验开关已移除**；0.36–0.39 需 `export KIMI_CODE_EXPERIMENTAL_SECONDARY_MODEL=1`；更老版本只能用 primary/secondary 两个固定槽位（功能降级） | `kimi --version` |
+| secondary-model 实验开关（仅 0.36–0.39 需要） | 0.42 起池恒开、开关已移除（0.40 转正）；0.36–0.39 不开则子代理永远跟随主模型 | 0.36–0.39：`export KIMI_CODE_EXPERIMENTAL_SECONDARY_MODEL=1` |
 | Node.js ≥ 18（建议 22） | 插件 hooks 与状态脚本的运行时 | `node --version` |
 | 目标文档在 git 仓库内 | 循环逐轮自动提交 | `git rev-parse --show-toplevel` |
-| 权限模式 yolo 或 auto | 否则每轮子代理和写文件都要人工确认 | 会话内 `/permission-mode` 切换 |
+| 权限模式"必要时询问"或"完全自动"（旧名 yolo/auto） | 否则每轮子代理和写文件都要人工确认 | 会话内 `/permission-mode` 切换 |
 | 配置好两个模型别名 | 互相审核的两个模型，需已存在于你的 `[models]` 配置 | 见下方池配置示例 |
 
 **推荐：把两个模型登记进子代理模型池**（`~/.kimi-code/config.toml`）。池 = `[secondary_model.models]` 里登记的"可派发子代理模型清单"，启动循环时从中挑选 A/B。完整示例（含思考档位配置，可直接照抄后改别名）：
@@ -194,6 +194,7 @@ node tests/crosscheck_state.test.mjs
 
 ## 相关文档
 
+- `docs/BEST_PRACTICES.md` — 多模型协作最佳实践：模型三层配置、swarm/tower/crosscheck 选型矩阵、交叉审核在项目流水线中的位置
 - `docs/DESIGN_BRIEF.md` — 完整设计简报：动机、实测教训、架构决策、里程碑与运行记录
 - `skills/crosscheck/SKILL.md` — 编排器运行时指令
 - `legacy/review_loop.py` — 旧版独立入口（tmux 后台运行，插件之外单独使用），与本插件共享提示词契约与状态格式
